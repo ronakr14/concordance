@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `2 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
+Progress: `3 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -307,81 +307,81 @@ from becoming rework**.
 
 ### `normalization.py`
 
-- [ ] Unicode NFKD fold
-- [ ] Case fold
-- [ ] Punctuation strip
-- [ ] Whitespace collapse
-- [ ] Credential suffix stripping
-- [ ] Nickname expansion to canonical form
-- [ ] Emit ordered token form (`name_norm`)
-- [ ] Emit sorted token form (`name_sorted_norm`) so order swaps cost nothing ⭐
-- [ ] USPS abbreviation expansion (ST→STREET, N→NORTH, AVE→AVENUE, …)
-- [ ] Unit/suite designator split into its own component
-- [ ] ZIP truncated to 5 digits
-- [ ] Date parsing across multiple formats
-- [ ] Dates retained as a `(year, month, day)` triple with nullable parts, enabling partial match ⭐
-- [ ] State normalized to two-letter code (handles full names and common misspellings)
-- [ ] Double Metaphone implementation for the phonetic key
-- [ ] **Organization name normalization** as its own function (Q2) ⭐
-- [ ] Corporate suffix canonicalization: LLC, L.L.C., Inc, Incorporated, Corp, Corporation, Group, Associates, PA, PC, LLP
-- [ ] `&` ↔ `and` normalized
-- [ ] Known acronym expansion for organization names
-- [ ] Acronym form derived from a multi-word organization name, for acronym-vs-expanded matching
-- [ ] EIN normalization and format validation (Q2)
-- [ ] Every function is pure — no DB, no I/O, no globals
+- [x] Unicode NFKD fold
+- [x] Case fold
+- [x] Punctuation strip
+- [x] Whitespace collapse
+- [x] Credential suffix stripping
+- [x] Nickname expansion to canonical form
+- [x] Emit ordered token form (`name_norm`)
+- [x] Emit sorted token form (`name_sorted_norm`) so order swaps cost nothing ⭐
+- [x] USPS abbreviation expansion (ST→STREET, N→NORTH, AVE→AVENUE, …)
+- [x] Unit/suite designator split into its own component
+- [x] ZIP truncated to 5 digits
+- [x] Date parsing across multiple formats
+- [x] Dates retained as a `(year, month, day)` triple with nullable parts, enabling partial match ⭐
+- [x] State normalized to two-letter code (handles full names and common misspellings)
+- [x] Double Metaphone implementation for the phonetic key
+- [x] **Organization name normalization** as its own function (Q2) ⭐
+- [x] Corporate suffix canonicalization: LLC, L.L.C., Inc, Incorporated, Corp, Corporation, Group, Associates, PA, PC, LLP
+- [x] `&` ↔ `and` normalized
+- [x] Known acronym expansion for organization names
+- [x] Acronym form derived from a multi-word organization name, for acronym-vs-expanded matching
+- [x] EIN normalization and format validation (Q2)
+- [x] Every function is pure — no DB, no I/O, no globals
 
 ### `npi_validator.py`
 
-- [ ] Luhn check digit computed over the `80840` prefix ⭐
-- [ ] Classification returns exactly one of: `VALID`, `MISSING`, `SENTINEL`, `PLACEHOLDER_TEXT`, `MALFORMED`, `CHECKSUM_FAIL`
-- [ ] Sentinel list configurable, defaults `0000000000`, `9999999999`, `1111111111`
-- [ ] Placeholder list configurable, defaults `UNKNOWN`, `N/A`, `NONE`, `TBD`, `-`
-- [ ] Leading/trailing whitespace and embedded separators handled before classification
-- [ ] Only `VALID` may drive a deterministic match — enforced at the call site, not by convention
+- [x] Luhn check digit computed over the `80840` prefix ⭐
+- [x] Classification returns exactly one of: `VALID`, `MISSING`, `SENTINEL`, `PLACEHOLDER_TEXT`, `MALFORMED`, `CHECKSUM_FAIL`
+- [x] Sentinel list configurable, defaults `0000000000`, `9999999999`, `1111111111`
+- [x] Placeholder list configurable, defaults `UNKNOWN`, `N/A`, `NONE`, `TBD`, `-`
+- [x] Leading/trailing whitespace and embedded separators handled before classification
+- [x] Only `VALID` may drive a deterministic match — enforced at the call site, not by convention
 
 ### `blocking.py` — `InMemoryCandidateGenerator` ⭐
 
 Implements the Stage 0 `CandidateGenerator` protocol. The SQL implementation comes in
 Stage 5; this one is kept permanently because it is what makes the Stage 3 sweep fast.
 
-- [ ] Inverted index built once per dataset, reused across every pass ⭐
-- [ ] Block: valid NPI exact
-- [ ] Block: `(state, dob)`
-- [ ] Block: `(last_name_phonetic, state)`
-- [ ] Block: `(zip5, last_name_first_3)`
-- [ ] Block: `(license_number, license_state)`
-- [ ] Block: trigram similarity on `name_norm` above a loose floor, capped per record
-- [ ] In-house character-trigram index for the fuzzy block — no `pg_trgm` available here ⭐
-- [ ] Organization blocks: EIN exact, `(legal_name_token, state)`, acronym key (Q2) ⭐
-- [ ] Union and dedupe candidates across all blocks
-- [ ] Cap at `MAX_CANDIDATES_PER_RECORD`
-- [ ] Record which block(s) produced each candidate — needed for debugging recall loss ⭐
-- [ ] Index build over 50k providers in <10s, memory footprint measured and recorded
-- [ ] Deterministic candidate ordering, so downstream results are reproducible ⭐
+- [x] Inverted index built once per dataset, reused across every pass ⭐
+- [x] Block: valid NPI exact
+- [x] Block: `(state, dob)`
+- [x] Block: `(last_name_phonetic, state)`
+- [x] Block: `(zip5, last_name_first_3)`
+- [x] Block: `(license_number, license_state)`
+- [x] Block: trigram similarity on `name_norm` above a loose floor, capped per record
+- [x] In-house character-trigram index for the fuzzy block — no `pg_trgm` available here ⭐
+- [x] Organization blocks: EIN exact, `(legal_name_token, state)`, acronym key (Q2) ⭐
+- [x] Union and dedupe candidates across all blocks
+- [x] Cap at `MAX_CANDIDATES_PER_RECORD`
+- [x] Record which block(s) produced each candidate — needed for debugging recall loss ⭐
+- [x] Index build over 50k providers in <10s, memory footprint measured and recorded
+- [x] Deterministic candidate ordering, so downstream results are reproducible ⭐
 
 ### Blocking recall measurement ⭐
 
-- [ ] `concordance blocking-recall --corruption X` CLI command
-- [ ] Reports: recall, mean candidates per record, p95 candidates, per-block contribution
-- [ ] Reports which true pairs were **missed** and by which corruption family — this drives block tuning
+- [x] `concordance blocking-recall --corruption X` CLI command
+- [x] Reports: recall, mean candidates per record, p95 candidates, per-block contribution
+- [x] Reports which true pairs were **missed** and by which corruption family — this drives block tuning
 
 ### Tests
 
-- [ ] Table-driven unit tests for every normalization function
-- [ ] Unit tests for all six NPI classifications, including known-valid and known-invalid real-format NPIs
-- [ ] Luhn implementation verified against hand-computed examples
-- [ ] Nickname expansion round-trip tests
-- [ ] Date parsing tests across every format the generator emits
-- [ ] Phonetic key tests for known homophone pairs
-- [ ] Blocking tests on a small fixture where the correct candidate set is known exactly
+- [x] Table-driven unit tests for every normalization function
+- [x] Unit tests for all six NPI classifications, including known-valid and known-invalid real-format NPIs
+- [x] Luhn implementation verified against hand-computed examples
+- [x] Nickname expansion round-trip tests
+- [x] Date parsing tests across every format the generator emits
+- [x] Phonetic key tests for known homophone pairs
+- [x] Blocking tests on a small fixture where the correct candidate set is known exactly
 
 ### GATE 2
-- [ ] `concordance match blocking-recall --corruption 0.5` reports **≥98% recall** at **≤100 candidates/record** ⭐
-- [ ] Same command at corruption 0.9 reported and recorded (may be lower — record the number)
-- [ ] Index build over 50k providers completes in <10s ⭐
-- [ ] Candidate sets are identical across repeated runs with the same seed ⭐
-- [ ] Unit test suite for this stage passes with ≥90% coverage on the three modules
-- [ ] `InMemoryCandidateGenerator` satisfies the `CandidateGenerator` protocol under mypy
+- [x] `concordance match blocking-recall --corruption 0.5` reports **≥98% recall** at **≤100 candidates/record** ⭐
+- [x] Same command at corruption 0.9 reported and recorded (may be lower — record the number)
+- [x] Index build over 50k providers completes in <10s ⭐
+- [x] Candidate sets are identical across repeated runs with the same seed ⭐
+- [x] Unit test suite for this stage passes with ≥90% coverage on the three modules
+- [x] `InMemoryCandidateGenerator` satisfies the `CandidateGenerator` protocol under mypy
 
 ---
 

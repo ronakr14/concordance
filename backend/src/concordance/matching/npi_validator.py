@@ -1,25 +1,29 @@
-"""NPI validation.
+"""NPI validation and classification.
 
 An NPI is ten digits whose last digit is a Luhn check digit computed over the
 number prefixed with ``80840`` - the ISO 7812 issuer identifier the NPPES
-assigns to health-care providers. Validating it properly is what lets the
-engine tell "this NPI disagrees" (strong evidence against a match) from "this
-NPI was never real" (no evidence either way), which is the distinction the
-whole deterministic path turns on.
+assigns to health-care providers. Implementing the real checksum is cheap and
+catches invalid identifiers a length check misses.
 
-Stage 1 needs the generator half; Stage 2 builds the comparison levels on top.
+The classification is the point. `MISSING`, `SENTINEL` and `PLACEHOLDER_TEXT`
+carry no information at all; `CHECKSUM_FAIL` and `MALFORMED` say the source
+tried to give an identifier and failed; only `VALID` may drive a deterministic
+match. Collapsing these into a boolean is what produces confident false
+negatives, because "NPI disagrees" is strong evidence *against* a match and a
+sentinel would supply it for free.
 """
 
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 
 NPI_PREFIX = "80840"
 NPI_RE = re.compile(r"^\d{10}$")
+_SEPARATORS = re.compile(r"[\s\-._/]")
 
-# Values seen in real extracts that are syntactically fine and semantically
-# meaningless. Treated as missing, never as disagreement.
-SENTINEL_NPIS = frozenset(
+# Syntactically fine, semantically meaningless. Overridable per deployment.
+DEFAULT_SENTINELS = frozenset(
     {
         "0000000000",
         "1111111111",
@@ -29,9 +33,43 @@ SENTINEL_NPIS = frozenset(
     }
 )
 
-PLACEHOLDER_TEXT = frozenset(
-    {"", "-", "--", "n/a", "na", "none", "null", "unknown", "unk", "tbd", "pending", "not available"}
+DEFAULT_PLACEHOLDERS = frozenset(
+    {
+        "",
+        "-",
+        "--",
+        "N/A",
+        "NA",
+        "N.A.",
+        "NONE",
+        "NULL",
+        "NIL",
+        "UNKNOWN",
+        "UNK",
+        "TBD",
+        "PENDING",
+        "NOT AVAILABLE",
+        "NOT APPLICABLE",
+        "NO NPI",
+        "XXXXXXXXXX",
+    }
 )
+
+
+class NpiStatus(StrEnum):
+    """Exactly one of these applies to any NPI field value."""
+
+    VALID = "VALID"
+    MISSING = "MISSING"
+    SENTINEL = "SENTINEL"
+    PLACEHOLDER_TEXT = "PLACEHOLDER_TEXT"
+    MALFORMED = "MALFORMED"
+    CHECKSUM_FAIL = "CHECKSUM_FAIL"
+
+    @property
+    def is_informative(self) -> bool:
+        """False where the value tells us nothing about identity."""
+        return self in (NpiStatus.VALID, NpiStatus.CHECKSUM_FAIL, NpiStatus.MALFORMED)
 
 
 def luhn_check_digit(payload: str) -> int:
@@ -59,21 +97,50 @@ def make_npi(first_nine: str) -> str:
     return first_nine + str(npi_check_digit(first_nine))
 
 
-def is_placeholder(value: str | None) -> bool:
-    """True for blank, textual placeholders and known sentinel numbers."""
+def clean_npi(value: str | None) -> str:
+    """Strip surrounding whitespace and embedded separators, upper-case."""
     if value is None:
-        return True
-    v = value.strip().lower()
-    if v in PLACEHOLDER_TEXT:
-        return True
-    return v in SENTINEL_NPIS
+        return ""
+    return _SEPARATORS.sub("", str(value).strip()).upper()
+
+
+def classify_npi(
+    value: str | None,
+    sentinels: frozenset[str] = DEFAULT_SENTINELS,
+    placeholders: frozenset[str] = DEFAULT_PLACEHOLDERS,
+) -> tuple[NpiStatus, str]:
+    """Classify one NPI field value. Returns the status and the cleaned digits."""
+    if value is None:
+        return NpiStatus.MISSING, ""
+
+    raw = str(value).strip().upper()
+    if not raw:
+        return NpiStatus.MISSING, ""
+    if raw in placeholders or _SEPARATORS.sub(" ", raw).strip() in placeholders:
+        return NpiStatus.PLACEHOLDER_TEXT, ""
+
+    cleaned = clean_npi(value)
+    if not cleaned:
+        return NpiStatus.MISSING, ""
+    if cleaned in placeholders:
+        return NpiStatus.PLACEHOLDER_TEXT, ""
+    if not cleaned.isdigit():
+        return NpiStatus.MALFORMED, cleaned
+    if cleaned in sentinels:
+        return NpiStatus.SENTINEL, cleaned
+    if not NPI_RE.match(cleaned):
+        return NpiStatus.MALFORMED, cleaned
+    if npi_check_digit(cleaned[:9]) != int(cleaned[9]):
+        return NpiStatus.CHECKSUM_FAIL, cleaned
+    return NpiStatus.VALID, cleaned
 
 
 def is_valid_npi(value: str | None) -> bool:
     """True only for a ten-digit, non-sentinel, checksum-correct NPI."""
-    if value is None:
-        return False
-    v = value.strip()
-    if not NPI_RE.match(v) or v in SENTINEL_NPIS:
-        return False
-    return npi_check_digit(v[:9]) == int(v[9])
+    return classify_npi(value)[0] is NpiStatus.VALID
+
+
+def is_placeholder(value: str | None) -> bool:
+    """True for blank, textual placeholders and known sentinel numbers."""
+    status, _ = classify_npi(value)
+    return status in (NpiStatus.MISSING, NpiStatus.PLACEHOLDER_TEXT, NpiStatus.SENTINEL)

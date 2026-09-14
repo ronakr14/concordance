@@ -79,6 +79,16 @@ def inspect(args: list[str]) -> int:
     return _run(*argv)
 
 
+def blocking_recall(args: list[str]) -> int:
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "match", "blocking-recall"]
+    if "CORRUPTION" in v:
+        argv += ["--corruption", v["CORRUPTION"]]
+    if "MAX_CANDIDATES" in v:
+        argv += ["--max-candidates", v["MAX_CANDIDATES"]]
+    return _run(*argv)
+
+
 def fit(args: list[str]) -> int:
     return _run(PY, "-m", "concordance.cli", "match", "fit")
 
@@ -128,6 +138,7 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "seed": seed,
     "verify": verify,
     "inspect": inspect,
+    "blocking-recall": blocking_recall,
     "fit": fit,
     "eval": evaluate,
     "sweep": sweep,

@@ -148,15 +148,107 @@ def data_verify(
 
 
 @match_app.command("normalize")
-def match_normalize(seed: SeedOpt = None) -> None:
-    """Normalize a dataset and persist the normalized columns."""
-    _not_until(2, "Normalization")
+def match_normalize(
+    out: Annotated[Path | None, typer.Option("--out", help="Dataset directory.")] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Records to show.")] = 10,
+    seed: SeedOpt = None,
+) -> None:
+    """Show how records normalize - both sides of a pair, side by side."""
+    from concordance.matching.normalization import normalize_provider, normalize_sanction
+    from concordance.store.parquet_store import ParquetRecordStore
+
+    settings, _ = start(seed, echo_config=False)
+    store = ParquetRecordStore(out or settings.generated_dir)
+    truth = store.ground_truth()
+    for record in store.sanction_batch(0, limit):
+        norm = normalize_sanction(record)
+        typer.echo(f"--- {record.record_id}  org={norm.is_organization}  npi={norm.npi_status}")
+        typer.echo(f"  sanction name={norm.name_norm!r} sorted={norm.name_sorted_norm!r} "
+                   f"org={norm.org_name_norm!r} phonetic={norm.phonetic_keys} dob={norm.dob}")
+        typer.echo(f"  sanction addr={norm.address.line!r} unit={norm.address.unit!r} "
+                   f"{norm.address.city} {norm.address.state} {norm.address.zip5} lic={norm.license_number}")
+        gt = truth.get(record.record_id)
+        provider = store.get_provider(gt.expected_provider_id) if gt and gt.expected_provider_id else None
+        if provider is not None:
+            pnorm = normalize_provider(provider)
+            typer.echo(f"  provider name={pnorm.name_norm!r} sorted={pnorm.name_sorted_norm!r} "
+                       f"org={pnorm.org_name_norm!r} phonetic={pnorm.phonetic_keys} dob={pnorm.dob}")
+            typer.echo(f"  provider addr={pnorm.address.line!r} unit={pnorm.address.unit!r} "
+                       f"{pnorm.address.city} {pnorm.address.state} {pnorm.address.zip5} lic={pnorm.license_number}")
 
 
 @match_app.command("block")
-def match_block(seed: SeedOpt = None) -> None:
-    """Build the blocking index and report candidate-set recall."""
-    _not_until(2, "Blocking")
+def match_block(
+    out: Annotated[Path | None, typer.Option("--out", help="Dataset directory.")] = None,
+    limit: Annotated[int, typer.Option("--limit", help="Records to show.")] = 5,
+    max_candidates: Annotated[int | None, typer.Option("--max-candidates")] = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Build the blocking index and show the candidates for a few records."""
+    from concordance.matching.blocking import InMemoryCandidateGenerator
+    from concordance.store.parquet_store import ParquetRecordStore
+
+    settings, _ = start(seed, echo_config=False)
+    store = ParquetRecordStore(out or settings.generated_dir)
+    generator = InMemoryCandidateGenerator(
+        max_candidates=max_candidates or settings.MAX_CANDIDATES_PER_RECORD
+    )
+    generator.build(store)
+    typer.echo(f"index: {generator.stats.as_dict()}")
+    truth = store.ground_truth()
+    for record in store.sanction_batch(0, limit):
+        candidates = generator.candidates(record)
+        gt = truth.get(record.record_id)
+        expected = gt.expected_provider_id if gt else None
+        typer.echo(f"--- {record.record_id}  expected={expected}  candidates={len(candidates)}")
+        for candidate in candidates[:8]:
+            mark = "*" if candidate.provider_id == expected else " "
+            typer.echo(f"  {mark} {candidate.provider_id}  via {list(candidate.blocking_keys)}")
+
+
+@match_app.command("blocking-recall")
+def match_blocking_recall(
+    out: Annotated[Path | None, typer.Option("--out", help="Dataset directory.")] = None,
+    corruption: Annotated[float | None, typer.Option("--corruption", help="Reseed at this level first.")] = None,
+    max_candidates: Annotated[int | None, typer.Option("--max-candidates")] = None,
+    trigram_floor: Annotated[float, typer.Option("--trigram-floor")] = 0.3,
+    limit: Annotated[int | None, typer.Option("--limit", help="Evaluate only the first N records.")] = None,
+    memory: Annotated[bool, typer.Option("--memory/--no-memory", help="Measure the index footprint (inflates build time).")] = False,
+    report: Annotated[Path | None, typer.Option("--report", help="Also write the JSON report here.")] = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Measure blocking recall - the ceiling on system recall."""
+    from concordance.eval.blocking_recall import measure_blocking_recall, write_report
+
+    settings, resolved_seed = start(seed, echo_config=False)
+    dataset = out or settings.generated_dir
+
+    if corruption is not None:
+        # A sweep asks for a specific corruption level; generate it rather than
+        # measure whatever happens to be on disk.
+        from concordance.synth.pipeline import seed_dataset
+
+        dataset = dataset if out else settings.DATA_DIR / f"blocking-{corruption}"
+        seed_dataset(
+            providers=50_000,
+            sanctions=5_000,
+            corruption=corruption,
+            seed=resolved_seed,
+            out_dir=dataset,
+            write_excel=False,
+        )
+
+    result = measure_blocking_recall(
+        dataset,
+        max_candidates=max_candidates or settings.MAX_CANDIDATES_PER_RECORD,
+        trigram_floor=trigram_floor,
+        limit=limit,
+        measure_memory=memory,
+    )
+    for line in result.lines():
+        typer.echo(line)
+    path = report or (settings.REPORTS_DIR / f"blocking_recall_{result.corruption_level}.json")
+    typer.echo(f"\nJSON report: {write_report(result, path)}")
 
 
 @match_app.command("fit")
