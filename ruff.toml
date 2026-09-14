@@ -1,0 +1,18 @@
+line-length = 100
+target-version = "py312"
+src = ["backend/src", "tests"]
+extend-exclude = [".venv", "data", "reports"]
+
+[lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "ARG", "PTH"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"tests/*" = ["ARG"]
+# Typer commands declare --seed as part of the CLI contract even where the
+# not-yet-built body ignores it.
+"backend/src/concordance/cli.py" = ["ARG001"]
+"tasks.py" = ["ARG001"]
+
+[lint.isort]
+known-first-party = ["concordance"]

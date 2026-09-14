@@ -1,0 +1,343 @@
+PROVIDER SANCTIONS & EXCLUSIONS RECONCILIATION - HACKATHON TEAM PLAN
+Extracted from: Provider_Sanctions_Hackathon_Team_Plan_1.xlsx
+============================================================
+
+
+SHEET 1: OVERVIEW
+============================================================
+
+Purpose: AI-powered healthcare provider reconciliation, human approval, and 3-month case management.
+Team Size: 4
+Recommended Stack: AWS PostgreSQL, Python, FastAPI, Streamlit, RapidFuzz, LLM API, Pandas, SQLAlchemy, Docker, Git
+
+Role Assignments:
+- Sachin | Data & Database Engineer | Primary Ownership: Provider master + sanction data + PostgreSQL | Key Deliverable: Database, realistic datasets, sanction Excel, ground truth | Dependencies: Defines data contract with all
+- Ronak | AI / Entity Resolution Engineer | Primary Ownership: Hybrid matching + AI reasoning | Key Deliverable: Matching engine, confidence, explanations, ambiguity detection | Dependencies: Provider/sanction schema
+- Aditya | Backend & Case Management Engineer | Primary Ownership: APIs + workflow + audit | Key Deliverable: FastAPI, approval/rejection, case creation, audit trail | Dependencies: DB + matching response contract
+- Sarang | UI & Analyst Experience Engineer | Primary Ownership: Dashboard + review experience | Key Deliverable: Streamlit dashboard, investigation page, case UI, AI assistant | Dependencies: API contract
+- Sarang | Integration Lead | Primary Ownership: Architecture + integration + testing + demo | Key Deliverable: End-to-end integration, acceptance tests, presentation | Dependencies: All four workstreams
+
+Core Flow:
+Provider DB + Sanction Excel -> Normalize -> Hybrid Matching -> Explainable Confidence -> Admin Review -> Case Creation -> Audit/Dashboard
+
+Key Differentiators:
+Hybrid deterministic + fuzzy + AI matching; explainable AI; ambiguity detection; human-in-the-loop; measurable precision/recall; optional AI analyst assistant
+
+
+SHEET 2: ROLE 1 - DATA & DATABASE ENGINEER
+============================================================
+
+Objective: Build the reliable data foundation and realistic, intentionally messy datasets needed to test reconciliation.
+
+Area: PostgreSQL
+  Task: Create database
+  Details: Create providers, sanction_records, provider_matches, cases, audit_logs tables.
+  Deliverable: AWS PostgreSQL schema
+
+Area: Provider Master
+  Task: Create provider data
+  Details: Generate realistic provider attributes: provider_id, NPI, names, DOB, address, city, state, ZIP, license, specialty, organization.
+  Deliverable: Provider dataset
+
+Area: Sanction Source
+  Task: Create sanction Excel
+  Details: Generate sanctioned providers with NPI present, missing, default, invalid, and inconsistent values.
+  Deliverable: Sanction Excel
+
+Area: Data Quality
+  Task: Create intentional variations
+  Details: Name order changes, initials, typos, abbreviations, address formatting, missing DOB/address/license.
+  Deliverable: Messy test data
+
+Area: Test Scenarios
+  Task: Create matching cases
+  Details: Include exact NPI, missing NPI, default NPI, name variation, address variation, ambiguous records, false positives, unmatched records.
+  Deliverable: Scenario catalogue
+
+Area: Ground Truth
+  Task: Create expected results
+  Details: For synthetic records, maintain expected provider_id / no-match / ambiguous outcome.
+  Deliverable: Ground-truth dataset
+
+Area: Data Dictionary
+  Task: Document fields
+  Details: Define field meaning, type, nullable rules, valid/default NPI values.
+  Deliverable: data_dictionary.md
+
+Area: Indexes
+  Task: Optimize lookup
+  Details: Indexes on NPI, normalized name, DOB, state, license where useful.
+  Deliverable: DB indexes
+
+Area: Acceptance Criteria
+  Task: Handoff
+  Details: All team members can connect and retrieve identical schemas/data.
+  Deliverable: Working DB + sample data
+
+
+SHEET 3: ROLE 2 - AI / ENTITY RESOLUTION ENGINEER
+============================================================
+
+Objective: Build a hybrid matching engine that combines deterministic rules, fuzzy similarity, and AI reasoning without blindly relying on an LLM.
+
+Stage 1 - Normalization
+  Task: Normalization
+  Details: Normalize names, addresses, dates, states, punctuation, whitespace and common abbreviations.
+  Deliverable: normalization.py
+
+Stage 2 - NPI Validation
+  Task: NPI Validation
+  Details: Detect NULL, blank, 0000000000, 9999999999, UNKNOWN, N/A and other configured invalid values.
+  Deliverable: npi_validator.py
+
+Stage 3 - Exact Match
+  Task: Exact Match
+  Details: Use valid NPI for deterministic matching; flag conflicting attributes for review.
+  Deliverable: Exact match logic
+
+Stage 4 - Candidate Generation
+  Task: Candidate Generation
+  Details: Reduce provider population using state, DOB, name similarity, license and other available attributes.
+  Deliverable: candidate_generator.py
+
+Stage 5 - Fuzzy Matching
+  Task: Fuzzy Matching
+  Details: Use RapidFuzz for name/address similarity and field-level scores.
+  Deliverable: fuzzy_matcher.py
+
+Stage 6 - Weighted Scoring
+  Task: Weighted Scoring
+  Details: Combine name, DOB, address, license and state scores using configurable weights.
+  Deliverable: scorer.py
+
+Stage 7 - AI Resolution
+  Task: AI Resolution
+  Details: Send only ambiguous/top candidates to LLM. Ask it to select a candidate or declare ambiguity.
+  Deliverable: ai_matcher.py
+
+Stage 8 - Structured Output
+  Task: Structured Output
+  Details: Return decision, provider_id, confidence, field scores and evidence as JSON.
+  Deliverable: Match response contract
+
+Stage 9 - Explainability
+  Task: Explainability
+  Details: Show why the match was selected using only supplied evidence.
+  Deliverable: AI explanation
+
+Stage 10 - Ambiguity
+  Task: Ambiguity
+  Details: Allow AI to return NO_CONFIDENT_MATCH / AMBIGUOUS instead of forcing a match.
+  Deliverable: Safe fallback
+
+Stage 11 - Evaluation
+  Task: Evaluation
+  Details: Compare predictions against ground truth; calculate precision, recall, F1 and false positives.
+  Deliverable: Evaluation report
+
+Stage 12 - Prompt Safety
+  Task: Prompt Safety
+  Details: Explicitly prohibit inventing facts or determining misconduct; focus only on entity resolution.
+  Deliverable: Versioned prompt
+
+
+SHEET 4: ROLE 3 - BACKEND & CASE MANAGEMENT ENGINEER
+============================================================
+
+Objective: Build the application API, approval workflow, case lifecycle and auditability.
+
+Area: Backend
+  Task: FastAPI setup
+  Details: Create application structure, configuration, error handling and logging.
+  Deliverable: FastAPI service
+
+Area: Database
+  Task: SQLAlchemy integration
+  Details: Connect to PostgreSQL and define ORM models/repositories.
+  Deliverable: DB integration
+
+Area: Upload
+  Task: Sanction upload API
+  Details: Accept Excel, validate columns, persist sanction records and track source file.
+  Deliverable: POST /sanctions/upload
+
+Area: Reconciliation
+  Task: Run reconciliation
+  Details: Trigger matching engine and persist results.
+  Deliverable: POST /reconciliation/run
+
+Area: Matches
+  Task: Review APIs
+  Details: List/filter/detail match results.
+  Deliverable: GET /matches + detail
+
+Area: Approval
+  Task: Approve/reject
+  Details: Admin approval or rejection with user and timestamp.
+  Deliverable: POST approve/reject
+
+Area: Cases
+  Task: Create case
+  Details: On approval create 3-month case with configurable duration.
+  Deliverable: Case creation service
+
+Area: Case Management
+  Task: Case APIs
+  Details: List/detail/filter active, expired, rejected and closed cases.
+  Deliverable: GET /cases
+
+Area: Audit
+  Task: Audit logging
+  Details: Record upload, match, AI decision, admin view, approval, rejection and case creation.
+  Deliverable: audit_logs
+
+Area: Security
+  Task: Basic controls
+  Details: Environment secrets, API validation, role assumptions and no secrets in Git.
+  Deliverable: Secure config
+
+Area: Testing
+  Task: API tests
+  Details: Test happy path, invalid input, duplicate approval, ambiguous match and case creation.
+  Deliverable: pytest suite
+
+
+SHEET 5: ROLE 4 - UI & ANALYST EXPERIENCE ENGINEER
+============================================================
+
+Objective: Build an analyst-friendly UI that makes AI decisions understandable and actionable.
+
+Screen: Dashboard
+  Task: KPIs
+  Details: Providers, sanctions, matched, unmatched, ambiguous, pending review, approved, cases created.
+  Deliverable: React dashboard
+
+Screen: Dashboard
+  Task: Charts
+  Details: Confidence distribution, state distribution, case status, reconciliation volume.
+  Deliverable: Visual analytics
+
+Screen: Dashboard
+  Task: Operational summary
+  Details: Provide a clear overview of reconciliation activity and compliance workload.
+  Deliverable: Analyst dashboard
+
+Screen: Providers
+  Task: Provider directory
+  Details: Display provider master records, compliance status, provider ID, NPI, specialty, organization and location.
+  Deliverable: Provider directory
+
+Screen: Providers
+  Task: Provider profile
+  Details: Show detailed provider information and related compliance/reconciliation information.
+  Deliverable: Provider profile
+
+Screen: Sanctions
+  Task: Sanction records
+  Details: Display sanctioned/excluded provider records and source information.
+  Deliverable: Sanction management page
+
+Screen: Sanctions
+  Task: Upload
+  Details: Provide UI for uploading sanction Excel/source files through the backend API.
+  Deliverable: Sanction upload workflow
+
+Screen: Queue
+  Task: Review queue
+  Details: Display reconciliation results requiring analyst/admin review.
+  Deliverable: Reconciliation table
+
+Screen: Queue
+  Task: Filtering
+  Details: Filter by confidence, status, state, sanction type and date.
+  Deliverable: Review filters
+
+Screen: Investigation
+  Task: Side-by-side comparison
+  Details: Show sanction record vs candidate provider attributes.
+  Deliverable: Investigation page
+
+Screen: Investigation
+  Task: AI evidence
+  Details: Display field-level scores, confidence, evidence and AI explanation.
+  Deliverable: Explainable AI panel
+
+Screen: Investigation
+  Task: Recommendation
+  Details: Clearly display AI recommendation: APPROVE, REVIEW or REJECT.
+  Deliverable: Recommendation panel
+
+Screen: Investigation
+  Task: Actions
+  Details: Approve / Reject / Send to Review with optional reviewer comment.
+  Deliverable: Review controls
+
+Screen: Investigation
+  Task: Case creation
+  Details: On approval, allow administrator to create a compliance case with configurable monitoring duration. Default duration is 3 months.
+  Deliverable: Create Case workflow
+
+Screen: Cases
+  Task: Case management
+  Details: Show case ID, provider, sanction, start/end dates, status and approval metadata.
+  Deliverable: Case management page
+
+Screen: Cases
+  Task: Case detail
+  Details: Allow administrator to open and inspect individual case information and audit history.
+  Deliverable: Case detail page
+
+Screen: Cases
+  Task: Case status
+  Details: Clearly distinguish active, pending, completed, rejected and other supported case states.
+  Deliverable: Case status UX
+
+Screen: Audit
+  Task: Audit trail
+  Details: Display important workflow events including review, approval, rejection and case creation.
+  Deliverable: Audit page
+
+Screen: Audit
+  Task: Event history
+  Details: Show timestamp, action, user/actor and relevant record/case information.
+  Deliverable: Audit timeline
+
+Screen: AI Assistant
+  Task: Optional differentiator
+  Details: Natural-language questions over authorized structured reconciliation and case data.
+  Deliverable: Analyst assistant
+
+Screen: UX
+  Task: Status handling
+  Details: Clearly distinguish MATCH, AMBIGUOUS, UNMATCHED, REJECTED, APPROVED and CASE_CREATED.
+  Deliverable: Status UX
+
+Screen: UX
+  Task: Navigation
+  Details: Provide consistent navigation between dashboard, providers, sanctions, reconciliation, cases and audit.
+  Deliverable: Application navigation
+
+Screen: UX
+  Task: Responsive design
+  Details: Professional analyst-oriented interface with consistent spacing, tables, cards, filters and actions.
+  Deliverable: React UI
+
+Screen: Integration
+  Task: API integration
+  Details: Consume backend FastAPI endpoints for providers, sanctions, reconciliation, approvals, cases and audit data.
+  Deliverable: API service layer
+
+Screen: Integration
+  Task: Loading/error states
+  Details: Handle API loading, empty, validation and error states without breaking the workflow.
+  Deliverable: Integration UX
+
+Screen: Demo
+  Task: Presentation flow
+  Details: Prepare exact-NPI, missing-NPI and ambiguous-match scenarios demonstrating the complete workflow.
+  Deliverable: Demo-ready application
+
+
+LIMITATIONS
+============================================================
+Data from both sources (provider master data and sanction data) can be up to 90% incorrect.
