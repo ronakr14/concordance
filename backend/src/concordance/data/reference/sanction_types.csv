@@ -1,0 +1,11 @@
+sanction_type,weight
+Exclusion - Mandatory,0.2800
+Exclusion - Permissive,0.1600
+License Revocation,0.1200
+License Suspension,0.1000
+Program Termination,0.0900
+Debarment,0.0700
+Payment Suspension,0.0600
+Probation,0.0500
+Reprimand,0.0400
+Civil Monetary Penalty,0.0300

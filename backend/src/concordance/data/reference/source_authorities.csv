@@ -1,0 +1,6 @@
+source_authority,dialect,weight
+OIG-LEIE,leie,0.4000
+SAM.gov,sam,0.2000
+State Medicaid - TX,state,0.1500
+State Medicaid - NY,state,0.1300
+State Medical Board - CA,board,0.1200

@@ -13,6 +13,9 @@ ignore = ["E501"]
 # not-yet-built body ignores it.
 "backend/src/concordance/cli.py" = ["ARG001"]
 "tasks.py" = ["ARG001"]
+# Corruption operations share one signature so they can live in a registry;
+# most of them need only part of it.
+"backend/src/concordance/synth/corruption.py" = ["ARG001"]
 
 [lint.isort]
 known-first-party = ["concordance"]

@@ -1,0 +1,78 @@
+kind,value
+head,Riverside
+head,Lakeview
+head,Summit
+head,Pioneer
+head,Cornerstone
+head,Evergreen
+head,Heritage
+head,Beacon
+head,Parkview
+head,Northgate
+head,Southpoint
+head,Westfield
+head,Eastside
+head,Clearwater
+head,Highland
+head,Meridian
+head,Sunrise
+head,Cedar Ridge
+head,Granite Bay
+head,Silver Creek
+head,Fairmont
+head,Oakhurst
+head,Blue Ridge
+head,Golden Gate
+head,Liberty
+head,Trinity
+head,Saint Agnes
+head,Saint Luke
+head,Mercy
+head,Providence
+head,Good Samaritan
+head,Mount Vernon
+core,Family Practice
+core,Medical
+core,Health
+core,Healthcare
+core,Behavioral Health
+core,Home Health
+core,Physical Therapy
+core,Diagnostic Imaging
+core,Surgical
+core,Primary Care
+core,Urgent Care
+core,Cardiology
+core,Orthopedic
+core,Dialysis
+core,Rehabilitation
+core,Dental
+core,Eye Care
+core,Pediatric
+core,Womens Health
+core,Oncology
+core,Pharmacy
+core,Laboratory
+core,Ambulance
+core,Hospice
+core,Skilled Nursing
+tail,Center
+tail,Centers
+tail,Group
+tail,Associates
+tail,Partners
+tail,Clinic
+tail,Services
+tail,Specialists
+tail,Institute
+tail,Practice
+tail,Network
+tail,Systems
+suffix,LLC
+suffix,Inc
+suffix,PC
+suffix,PA
+suffix,LLP
+suffix,Corp
+suffix,PLLC
+suffix,

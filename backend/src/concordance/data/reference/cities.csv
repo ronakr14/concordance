@@ -1,0 +1,251 @@
+state,city,zip3
+CA,Los Angeles,900
+CA,San Diego,921
+CA,San Jose,951
+CA,Fresno,937
+CA,Sacramento,958
+TX,Houston,770
+TX,San Antonio,782
+TX,Dallas,752
+TX,Austin,787
+TX,El Paso,799
+FL,Jacksonville,322
+FL,Miami,331
+FL,Tampa,336
+FL,Orlando,328
+FL,Tallahassee,323
+NY,New York,100
+NY,Buffalo,142
+NY,Rochester,146
+NY,Syracuse,132
+NY,Albany,122
+PA,Philadelphia,191
+PA,Pittsburgh,152
+PA,Allentown,181
+PA,Erie,165
+PA,Harrisburg,171
+IL,Chicago,606
+IL,Aurora,605
+IL,Rockford,611
+IL,Peoria,616
+IL,Springfield,627
+OH,Columbus,432
+OH,Cleveland,441
+OH,Cincinnati,452
+OH,Toledo,436
+OH,Akron,443
+GA,Atlanta,303
+GA,Augusta,309
+GA,Savannah,314
+GA,Columbus,319
+GA,Macon,312
+NC,Charlotte,282
+NC,Raleigh,276
+NC,Greensboro,274
+NC,Durham,277
+NC,Winston Salem,271
+MI,Detroit,482
+MI,Grand Rapids,495
+MI,Lansing,489
+MI,Ann Arbor,481
+MI,Flint,485
+NJ,Newark,071
+NJ,Jersey City,073
+NJ,Paterson,075
+NJ,Trenton,086
+NJ,Camden,081
+VA,Virginia Beach,234
+VA,Norfolk,235
+VA,Richmond,232
+VA,Arlington,222
+VA,Roanoke,240
+WA,Seattle,981
+WA,Spokane,992
+WA,Tacoma,984
+WA,Vancouver,986
+WA,Olympia,985
+AZ,Phoenix,850
+AZ,Tucson,857
+AZ,Mesa,852
+AZ,Flagstaff,860
+AZ,Yuma,853
+MA,Boston,021
+MA,Worcester,016
+MA,Springfield,011
+MA,Cambridge,021
+MA,Lowell,018
+TN,Nashville,372
+TN,Memphis,381
+TN,Knoxville,379
+TN,Chattanooga,374
+TN,Clarksville,370
+IN,Indianapolis,462
+IN,Fort Wayne,468
+IN,Evansville,477
+IN,South Bend,466
+IN,Bloomington,474
+MD,Baltimore,212
+MD,Columbia,210
+MD,Silver Spring,209
+MD,Rockville,208
+MD,Annapolis,214
+MO,Kansas City,641
+MO,Saint Louis,631
+MO,Springfield,658
+MO,Columbia,652
+MO,Joplin,648
+WI,Milwaukee,532
+WI,Madison,537
+WI,Green Bay,543
+WI,Kenosha,531
+WI,Appleton,549
+CO,Denver,802
+CO,Colorado Springs,809
+CO,Aurora,800
+CO,Fort Collins,805
+CO,Pueblo,810
+MN,Minneapolis,554
+MN,Saint Paul,551
+MN,Rochester,559
+MN,Duluth,558
+MN,Bloomington,554
+SC,Charleston,294
+SC,Columbia,292
+SC,Greenville,296
+SC,Rock Hill,297
+SC,Florence,295
+AL,Birmingham,352
+AL,Montgomery,361
+AL,Mobile,366
+AL,Huntsville,358
+AL,Tuscaloosa,354
+LA,New Orleans,701
+LA,Baton Rouge,708
+LA,Shreveport,711
+LA,Lafayette,705
+LA,Monroe,712
+KY,Louisville,402
+KY,Lexington,405
+KY,Bowling Green,421
+KY,Owensboro,423
+KY,Covington,410
+OR,Portland,972
+OR,Salem,973
+OR,Eugene,974
+OR,Medford,975
+OR,Bend,977
+OK,Oklahoma City,731
+OK,Tulsa,741
+OK,Norman,730
+OK,Lawton,735
+OK,Enid,737
+CT,Bridgeport,066
+CT,New Haven,065
+CT,Hartford,061
+CT,Stamford,069
+CT,Waterbury,067
+UT,Salt Lake City,841
+UT,Provo,846
+UT,Ogden,844
+UT,Saint George,847
+UT,Logan,843
+IA,Des Moines,503
+IA,Cedar Rapids,524
+IA,Davenport,528
+IA,Iowa City,522
+IA,Sioux City,511
+NV,Las Vegas,891
+NV,Reno,895
+NV,Henderson,890
+NV,Carson City,897
+NV,Sparks,894
+AR,Little Rock,722
+AR,Fort Smith,729
+AR,Fayetteville,727
+AR,Jonesboro,724
+AR,Hot Springs,719
+MS,Jackson,392
+MS,Gulfport,395
+MS,Hattiesburg,394
+MS,Tupelo,388
+MS,Meridian,393
+KS,Wichita,672
+KS,Topeka,666
+KS,Kansas City,661
+KS,Lawrence,660
+KS,Salina,674
+NM,Albuquerque,871
+NM,Las Cruces,880
+NM,Santa Fe,875
+NM,Roswell,882
+NM,Farmington,874
+NE,Omaha,681
+NE,Lincoln,685
+NE,Bellevue,680
+NE,Grand Island,688
+NE,Kearney,688
+ID,Boise,837
+ID,Idaho Falls,834
+ID,Pocatello,832
+ID,Coeur dAlene,838
+ID,Twin Falls,833
+WV,Charleston,253
+WV,Huntington,257
+WV,Morgantown,265
+WV,Parkersburg,261
+WV,Wheeling,260
+HI,Honolulu,968
+HI,Hilo,967
+HI,Kailua,967
+HI,Kaneohe,967
+HI,Waipahu,967
+NH,Manchester,031
+NH,Nashua,030
+NH,Concord,033
+NH,Dover,038
+NH,Portsmouth,038
+ME,Portland,041
+ME,Lewiston,042
+ME,Bangor,044
+ME,Augusta,043
+ME,Biddeford,040
+MT,Billings,591
+MT,Missoula,598
+MT,Great Falls,594
+MT,Bozeman,597
+MT,Helena,596
+RI,Providence,029
+RI,Warwick,028
+RI,Cranston,029
+RI,Pawtucket,028
+RI,Newport,028
+DE,Wilmington,198
+DE,Dover,199
+DE,Newark,197
+DE,Middletown,197
+DE,Smyrna,199
+SD,Sioux Falls,571
+SD,Rapid City,577
+SD,Aberdeen,574
+SD,Brookings,570
+SD,Pierre,575
+ND,Fargo,581
+ND,Bismarck,585
+ND,Grand Forks,582
+ND,Minot,587
+ND,Williston,588
+AK,Anchorage,995
+AK,Fairbanks,997
+AK,Juneau,998
+AK,Wasilla,996
+AK,Sitka,998
+VT,Burlington,054
+VT,Rutland,057
+VT,Montpelier,056
+VT,Brattleboro,053
+VT,Barre,056
+WY,Cheyenne,820
+WY,Casper,826
+WY,Laramie,820
+WY,Gillette,827
+WY,Rock Springs,829

@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `0 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
+Progress: `2 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -44,11 +44,11 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 
 ### Needed now — before Stage 0
 
-- [ ] Install Python 3.12 alongside system 3.14 (do not uninstall 3.14)
-- [ ] Verify `py -3.12 --version` prints 3.12.x
-- [ ] Create local venv on 3.12: `py -3.12 -m venv .venv`
-- [ ] Install `git`; confirm `git --version`
-- [ ] Configure `git config --global core.autocrlf input`
+- [x] Install Python 3.12 alongside system 3.14 (do not uninstall 3.14)
+- [x] Verify `py -3.12 --version` prints 3.12.x
+- [x] Create local venv on 3.12: `py -3.12 -m venv .venv`
+- [x] Install `git`; confirm `git --version`
+- [x] Configure `git config --global core.autocrlf input`
 
 ### Needed before Stage 4 (LLM layer)
 
@@ -92,7 +92,7 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 - [x] All six written into `docs/PLAN.md` §11 as binding decisions
 
 ### GATE -1
-- [ ] `py -3.12 -c "import sys; print(sys.version)"` prints 3.12
+- [x] `py -3.12 -c "import sys; print(sys.version)"` prints 3.12
 - [x] All six open questions answered in writing (PLAN §11)
 
 > **Scope note.** Q1 and Q2 each added real work beyond the original estimate: the
@@ -110,74 +110,74 @@ from becoming rework**.
 
 ### Repository
 
-- [ ] `git init` in `C:\Projects\provider-reconciliation`
-- [ ] Create `.gitignore` — `.venv/`, `__pycache__/`, `.env`, `node_modules/`, `dist/`, `*.pyc`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `data/generated/`, `reports/`, `.cache/llm/`
-- [ ] Create top-level `README.md` stub (filled properly in Stage 10)
-- [ ] Create `LICENSE` (MIT)
-- [ ] Create directory skeleton as PLAN §5 specifies, minus `frontend/` and the Dockerfiles
-- [ ] First commit
+- [x] `git init` in `C:\Projects\provider-reconciliation`
+- [x] Create `.gitignore` — `.venv/`, `__pycache__/`, `.env`, `node_modules/`, `dist/`, `*.pyc`, `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`, `data/generated/`, `reports/`, `.cache/llm/`
+- [x] Create top-level `README.md` stub (filled properly in Stage 10)
+- [x] Create `LICENSE` (MIT)
+- [x] Create directory skeleton as PLAN §5 specifies, minus `frontend/` and the Dockerfiles
+- [x] First commit
 
 ### Package scaffolding
 
-- [ ] `backend/pyproject.toml` — project metadata, `requires-python = ">=3.12,<3.13"`
-- [ ] Core deps now: `pydantic`, `pydantic-settings`, `typer`, `structlog`, `rapidfuzz`, `pandas`, `pyarrow`, `numpy`, `scikit-learn` (isotonic only), `openpyxl`
-- [ ] Deferred deps declared as extras, installed at their stage: `llm` (`httpx`, `jsonschema`), `db` (`sqlalchemy>=2.0`, `alembic`, `psycopg[binary]`), `api` (`fastapi`, `uvicorn[standard]`, `pyjwt`, `argon2-cffi`, `python-multipart`), `assistant` (`sqlglot`)
-- [ ] Dev deps: `pytest`, `pytest-cov`, `ruff`, `mypy`, `faker`
-- [ ] Configure `ruff` — line length, rule selection, import sorting
-- [ ] Configure `mypy` — strict on `matching/` and `llm/`
-- [ ] Configure `pytest` — testpaths, coverage, markers (`unit`, `integration`, `e2e`, `slow`)
-- [ ] `backend/src/concordance/__init__.py` with `__version__`
-- [ ] Editable install into the venv; `import concordance` works
+- [x] `backend/pyproject.toml` — project metadata, `requires-python = ">=3.12,<3.13"`
+- [x] Core deps now: `pydantic`, `pydantic-settings`, `typer`, `structlog`, `rapidfuzz`, `pandas`, `pyarrow`, `numpy`, `scikit-learn` (isotonic only), `openpyxl`
+- [x] Deferred deps declared as extras, installed at their stage: `llm` (`httpx`, `jsonschema`), `db` (`sqlalchemy>=2.0`, `alembic`, `psycopg[binary]`), `api` (`fastapi`, `uvicorn[standard]`, `pyjwt`, `argon2-cffi`, `python-multipart`), `assistant` (`sqlglot`)
+- [x] Dev deps: `pytest`, `pytest-cov`, `ruff`, `mypy`, `faker`
+- [x] Configure `ruff` — line length, rule selection, import sorting
+- [x] Configure `mypy` — strict on `matching/` and `llm/`
+- [x] Configure `pytest` — testpaths, coverage, markers (`unit`, `integration`, `e2e`, `slow`)
+- [x] `backend/src/concordance/__init__.py` with `__version__`
+- [x] Editable install into the venv; `import concordance` works
 
 ### The protocol seam ⭐ — the most important part of this stage
 
-- [ ] `RecordStore` protocol — `all_providers()`, `get_provider(pid)`, `sanction_batch(offset, limit)`, `provider_count()`, `snapshot_hash()` ⭐
-- [ ] `CandidateGenerator` protocol — `candidates(rec) -> list[Candidate]`, `build(store)` ⭐
-- [ ] `ResponseCache` protocol — `get(key)`, `put(key, value)`, `stats()` ⭐
-- [ ] `StorageBackend` protocol — `put(key, bytes) -> uri`, `get(uri)`, `exists(uri)`, `delete(uri)`
-- [ ] `LocalStorage` implementation writing under `STORAGE_LOCAL_PATH`
-- [ ] Stub `S3Storage` raising `NotImplementedError` — proves the seam exists
-- [ ] Domain dataclasses `Provider`, `SanctionRecord`, `Candidate` — plain, storage-agnostic, no ORM ⭐
-- [ ] **Nothing in `matching/` may import pandas, pyarrow, SQLAlchemy or psycopg** — enforced by an import-linter test ⭐
+- [x] `RecordStore` protocol — `all_providers()`, `get_provider(pid)`, `sanction_batch(offset, limit)`, `provider_count()`, `snapshot_hash()` ⭐
+- [x] `CandidateGenerator` protocol — `candidates(rec) -> list[Candidate]`, `build(store)` ⭐
+- [x] `ResponseCache` protocol — `get(key)`, `put(key, value)`, `stats()` ⭐
+- [x] `StorageBackend` protocol — `put(key, bytes) -> uri`, `get(uri)`, `exists(uri)`, `delete(uri)`
+- [x] `LocalStorage` implementation writing under `STORAGE_LOCAL_PATH`
+- [x] Stub `S3Storage` raising `NotImplementedError` — proves the seam exists
+- [x] Domain dataclasses `Provider`, `SanctionRecord`, `Candidate` — plain, storage-agnostic, no ORM ⭐
+- [x] **Nothing in `matching/` may import pandas, pyarrow, SQLAlchemy or psycopg** — enforced by an import-linter test ⭐
 
 ### Configuration
 
-- [ ] `config.py` using `pydantic-settings` — `Settings` class
-- [ ] Settings now: `LOG_LEVEL`, `ENV`, `DATA_DIR`, `REPORTS_DIR`, `STORAGE_BACKEND`, `STORAGE_LOCAL_PATH`, `MAX_CANDIDATES_PER_RECORD`, `TARGET_PRECISION`, `RANDOM_SEED`
-- [ ] Settings reserved for later stages, optional until then: `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER_CHAIN`, `LLM_MODEL`, `LLM_ENABLED`, `DEFAULT_CASE_MONTHS=3`
-- [ ] `.env.example` with every setting and a safe placeholder value
-- [ ] Settings cached via `lru_cache`; never read `os.environ` outside `config.py`
-- [ ] Fail fast if a required secret is missing in `ENV=production`
+- [x] `config.py` using `pydantic-settings` — `Settings` class
+- [x] Settings now: `LOG_LEVEL`, `ENV`, `DATA_DIR`, `REPORTS_DIR`, `STORAGE_BACKEND`, `STORAGE_LOCAL_PATH`, `MAX_CANDIDATES_PER_RECORD`, `TARGET_PRECISION`, `RANDOM_SEED`
+- [x] Settings reserved for later stages, optional until then: `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER_CHAIN`, `LLM_MODEL`, `LLM_ENABLED`, `DEFAULT_CASE_MONTHS=3`
+- [x] `.env.example` with every setting and a safe placeholder value
+- [x] Settings cached via `lru_cache`; never read `os.environ` outside `config.py`
+- [x] Fail fast if a required secret is missing in `ENV=production`
 
 ### Logging
 
-- [ ] `structlog` configured — human-readable in dev, JSON in production
-- [ ] Correlation-id context var, bound by the CLI per command run
-- [ ] Progress reporting helper for long CLI operations
+- [x] `structlog` configured — human-readable in dev, JSON in production
+- [x] Correlation-id context var, bound by the CLI per command run
+- [x] Progress reporting helper for long CLI operations
 
 ### CLI skeleton
 
-- [ ] `typer` app with command groups: `data`, `match`, `llm`, `db`, `report`
-- [ ] `concordance --version`
-- [ ] Every command takes `--seed` and echoes the resolved config it ran with ⭐
-- [ ] Stub commands registered for everything the later stages fill in
+- [x] `typer` app with command groups: `data`, `match`, `llm`, `db`, `report`
+- [x] `concordance --version`
+- [x] Every command takes `--seed` and echoes the resolved config it ran with ⭐
+- [x] Stub commands registered for everything the later stages fill in
 
 ### Task runner
 
-- [ ] `Makefile` (or `tasks.py` if make is awkward on Windows) calling the CLI directly
-- [ ] `make seed` (accepts `CORRUPTION=`, `PROVIDERS=`, `SEED=`)
-- [ ] `make fit` / `make eval` / `make sweep`
-- [ ] `make test` / `make test-unit` / `make cov`
-- [ ] `make lint` / `make fmt` / `make typecheck`
-- [ ] Targets that need later infrastructure are declared but exit with a clear "not until Stage N" message ⭐
+- [x] `Makefile` (or `tasks.py` if make is awkward on Windows) calling the CLI directly
+- [x] `make seed` (accepts `CORRUPTION=`, `PROVIDERS=`, `SEED=`)
+- [x] `make fit` / `make eval` / `make sweep`
+- [x] `make test` / `make test-unit` / `make cov`
+- [x] `make lint` / `make fmt` / `make typecheck`
+- [x] Targets that need later infrastructure are declared but exit with a clear "not until Stage N" message ⭐
 
 ### GATE 0
-- [ ] `concordance --help` lists all five command groups
-- [ ] `make test` runs green on an empty suite
-- [ ] `make lint` and `make typecheck` both pass
-- [ ] The import-linter test passes — `matching/` has no storage dependency ⭐
-- [ ] No Docker, Postgres or network access was required to reach this gate
-- [ ] `git log` shows the work committed
+- [x] `concordance --help` lists all five command groups
+- [x] `make test` runs green on an empty suite
+- [x] `make lint` and `make typecheck` both pass
+- [x] The import-linter test passes — `matching/` has no storage dependency ⭐
+- [x] No Docker, Postgres or network access was required to reach this gate
+- [x] `git log` shows the work committed
 
 ---
 
@@ -185,121 +185,121 @@ from becoming rework**.
 
 ### Reference data
 
-- [ ] Weighted surname frequency table — real long-tail distribution, rare names genuinely rare ⭐
-- [ ] Weighted given-name frequency table, split by era so DOB and name correlate plausibly
-- [ ] Nickname → canonical mapping table (Bob→Robert, Bill→William, Peggy→Margaret, …)
-- [ ] Credential suffix list (MD, DO, DDS, RN, NP, PA-C, PhD, Jr, Sr, II, III)
-- [ ] US state list with population weights
-- [ ] City/ZIP reference set per state (a sampled subset is fine; ZIPs must be internally consistent with state)
-- [ ] Street-name and street-type corpus
-- [ ] Specialty taxonomy list
-- [ ] Organization-name generator components (suffixes: LLC, Inc, Group, Associates, Medical Center)
-- [ ] All reference data committed as data files, not inline literals
+- [x] Weighted surname frequency table — real long-tail distribution, rare names genuinely rare ⭐
+- [x] Weighted given-name frequency table, split by era so DOB and name correlate plausibly
+- [x] Nickname → canonical mapping table (Bob→Robert, Bill→William, Peggy→Margaret, …)
+- [x] Credential suffix list (MD, DO, DDS, RN, NP, PA-C, PhD, Jr, Sr, II, III)
+- [x] US state list with population weights
+- [x] City/ZIP reference set per state (a sampled subset is fine; ZIPs must be internally consistent with state)
+- [x] Street-name and street-type corpus
+- [x] Specialty taxonomy list
+- [x] Organization-name generator components (suffixes: LLC, Inc, Group, Associates, Medical Center)
+- [x] All reference data committed as data files, not inline literals
 
 ### Provider generator
 
-- [ ] Generate 50,000 providers, deterministic under a seed ⭐
-- [ ] Valid NPIs generated with a **correct Luhn check digit** over the `80840` prefix
-- [ ] NPIs unique across the provider set
-- [ ] Mix of individual and organization providers (`is_organization`), roughly 15% organizations
-- [ ] Organizations have no DOB, no first/last name — `organization_name`, DBA/alias, EIN, type-2 NPI (Q2) ⭐
-- [ ] EINs generated in valid format with a plausible prefix
-- [ ] Organization names drawn from real-shaped components with corporate suffixes and some acronym forms
-- [ ] Planted organization near-duplicates: same name different city, acronym vs expanded, DBA vs legal name ⭐
-- [ ] DOB distribution realistic for practising clinicians
-- [ ] Addresses internally consistent (city ∈ state, ZIP ∈ state)
-- [ ] License numbers formatted per state convention, `license_state` usually equal to `state`
-- [ ] Deliberate near-duplicate clusters planted: twins, father/son same name same address, common-name collisions within one state ⭐
-- [ ] Seed is recorded in the run output so any dataset is reproducible
+- [x] Generate 50,000 providers, deterministic under a seed ⭐
+- [x] Valid NPIs generated with a **correct Luhn check digit** over the `80840` prefix
+- [x] NPIs unique across the provider set
+- [x] Mix of individual and organization providers (`is_organization`), roughly 15% organizations
+- [x] Organizations have no DOB, no first/last name — `organization_name`, DBA/alias, EIN, type-2 NPI (Q2) ⭐
+- [x] EINs generated in valid format with a plausible prefix
+- [x] Organization names drawn from real-shaped components with corporate suffixes and some acronym forms
+- [x] Planted organization near-duplicates: same name different city, acronym vs expanded, DBA vs legal name ⭐
+- [x] DOB distribution realistic for practising clinicians
+- [x] Addresses internally consistent (city ∈ state, ZIP ∈ state)
+- [x] License numbers formatted per state convention, `license_state` usually equal to `state`
+- [x] Deliberate near-duplicate clusters planted: twins, father/son same name same address, common-name collisions within one state ⭐
+- [x] Seed is recorded in the run output so any dataset is reproducible
 
 ### Corruption engine ⭐
 
-- [ ] Single dial `corruption_level` in `[0.0, 0.9]`
-- [ ] Each family independently configurable and independently seeded
-- [ ] **Name**: token order swap
-- [ ] **Name**: first name reduced to initial
-- [ ] **Name**: nickname substitution
-- [ ] **Name**: keyboard-adjacency typo
-- [ ] **Name**: transliteration / diacritic loss
-- [ ] **Name**: credential suffix added or dropped
-- [ ] **Name**: married-name change on last name
-- [ ] **Name**: hyphenated name split or joined
-- [ ] **NPI**: missing / empty string
-- [ ] **NPI**: sentinel (`0000000000`, `9999999999`, `1111111111`)
-- [ ] **NPI**: placeholder text (`UNKNOWN`, `N/A`, `NONE`, `TBD`, `-`)
-- [ ] **NPI**: checksum-failing 10-digit number
-- [ ] **NPI**: adjacent digit transposition
-- [ ] **NPI**: wrong length
-- [ ] **DOB**: missing
-- [ ] **DOB**: off-by-one day or year
-- [ ] **DOB**: month/day swap
-- [ ] **DOB**: wrong century
-- [ ] **DOB**: alternate string format
-- [ ] **Address**: USPS abbreviation applied
-- [ ] **Address**: unit/suite dropped
-- [ ] **Address**: ZIP+4 instead of ZIP5
-- [ ] **Address**: wrong ZIP
-- [ ] **Address**: PO box substituted
-- [ ] **Address**: whole address missing
-- [ ] **License**: missing
-- [ ] **License**: wrong state
-- [ ] **License**: formatting variation
-- [ ] Corruption applied to **both** sides — provider master and sanction records — per the spec's limitation line
-- [ ] Every applied corruption recorded per record into `ground_truth.corruption_profile` ⭐
+- [x] Single dial `corruption_level` in `[0.0, 0.9]`
+- [x] Each family independently configurable and independently seeded
+- [x] **Name**: token order swap
+- [x] **Name**: first name reduced to initial
+- [x] **Name**: nickname substitution
+- [x] **Name**: keyboard-adjacency typo
+- [x] **Name**: transliteration / diacritic loss
+- [x] **Name**: credential suffix added or dropped
+- [x] **Name**: married-name change on last name
+- [x] **Name**: hyphenated name split or joined
+- [x] **NPI**: missing / empty string
+- [x] **NPI**: sentinel (`0000000000`, `9999999999`, `1111111111`)
+- [x] **NPI**: placeholder text (`UNKNOWN`, `N/A`, `NONE`, `TBD`, `-`)
+- [x] **NPI**: checksum-failing 10-digit number
+- [x] **NPI**: adjacent digit transposition
+- [x] **NPI**: wrong length
+- [x] **DOB**: missing
+- [x] **DOB**: off-by-one day or year
+- [x] **DOB**: month/day swap
+- [x] **DOB**: wrong century
+- [x] **DOB**: alternate string format
+- [x] **Address**: USPS abbreviation applied
+- [x] **Address**: unit/suite dropped
+- [x] **Address**: ZIP+4 instead of ZIP5
+- [x] **Address**: wrong ZIP
+- [x] **Address**: PO box substituted
+- [x] **Address**: whole address missing
+- [x] **License**: missing
+- [x] **License**: wrong state
+- [x] **License**: formatting variation
+- [x] Corruption applied to **both** sides — provider master and sanction records — per the spec's limitation line
+- [x] Every applied corruption recorded per record into `ground_truth.corruption_profile` ⭐
 
 ### Sanction record generator
 
-- [ ] Generate 5,000 sanction records
-- [ ] Deliberate outcome mix: true matches, true non-matches, genuinely ambiguous
-- [ ] Records covering **all eight spec scenarios**:
-  - [ ] exact NPI match
-  - [ ] missing NPI
-  - [ ] default/sentinel NPI
-  - [ ] name variation
-  - [ ] address variation
-  - [ ] ambiguous (multiple plausible candidates)
-  - [ ] false positive bait (close but genuinely different person)
-  - [ ] unmatched (no corresponding provider at all)
-- [ ] `sanction_type`, `exclusion_date`, `reinstatement_date`, `source_authority` populated plausibly
-- [ ] Some records with a reinstatement date in the past (no longer excluded) — exercises workflow edge cases
-- [ ] **Excel headers are deliberately non-canonical** so the column-mapping path is exercised from day one (Q1) ⭐
-- [ ] At least two distinct header dialects emitted, so mapping reuse per source authority is testable
-- [ ] Scenario: record whose `is_organization` disagrees across the two sides (Q2) ⭐
+- [x] Generate 5,000 sanction records
+- [x] Deliberate outcome mix: true matches, true non-matches, genuinely ambiguous
+- [x] Records covering **all eight spec scenarios**:
+  - [x] exact NPI match
+  - [x] missing NPI
+  - [x] default/sentinel NPI
+  - [x] name variation
+  - [x] address variation
+  - [x] ambiguous (multiple plausible candidates)
+  - [x] false positive bait (close but genuinely different person)
+  - [x] unmatched (no corresponding provider at all)
+- [x] `sanction_type`, `exclusion_date`, `reinstatement_date`, `source_authority` populated plausibly
+- [x] Some records with a reinstatement date in the past (no longer excluded) — exercises workflow edge cases
+- [x] **Excel headers are deliberately non-canonical** so the column-mapping path is exercised from day one (Q1) ⭐
+- [x] At least two distinct header dialects emitted, so mapping reuse per source authority is testable
+- [x] Scenario: record whose `is_organization` disagrees across the two sides (Q2) ⭐
 
 ### Ground truth
 
-- [ ] One `ground_truth` row per sanction record, no exceptions
-- [ ] `expected_outcome` set, `expected_provider_id` set for `MATCH`
-- [ ] `scenario_tag` set for per-scenario evaluation breakdown
-- [ ] Ambiguous records tagged with the full set of plausible provider ids in `corruption_profile`
+- [x] One `ground_truth` row per sanction record, no exceptions
+- [x] `expected_outcome` set, `expected_provider_id` set for `MATCH`
+- [x] `scenario_tag` set for per-scenario evaluation breakdown
+- [x] Ambiguous records tagged with the full set of plausible provider ids in `corruption_profile`
 
 ### Export & CLI
 
-- [ ] Sanction Excel export via `openpyxl`, realistic headers, some blank cells
-- [ ] Excel export includes a few malformed rows for upload-validation testing
-- [ ] `concordance data seed --providers N --sanctions N --corruption X --seed S`
-- [ ] `make seed CORRUPTION=0.5` wired to the CLI
-- [ ] Output written as **Parquet** under `data/generated/` — `providers.parquet`, `sanction_records.parquet`, `ground_truth.parquet` ⭐
-- [ ] A `manifest.json` beside them recording seed, corruption level, counts, generator version and a content hash ⭐
-- [ ] Seeding is idempotent — re-running the same seed overwrites with identical content
-- [ ] `ParquetRecordStore` implementing the Stage 0 `RecordStore` protocol ⭐
-- [ ] `ParquetRecordStore.snapshot_hash()` returns a stable, order-independent hash — the same contract Postgres will honour later ⭐
-- [ ] Dataset loads into memory in a few seconds; 50k providers fit comfortably
+- [x] Sanction Excel export via `openpyxl`, realistic headers, some blank cells
+- [x] Excel export includes a few malformed rows for upload-validation testing
+- [x] `concordance data seed --providers N --sanctions N --corruption X --seed S`
+- [x] `make seed CORRUPTION=0.5` wired to the CLI
+- [x] Output written as **Parquet** under `data/generated/` — `providers.parquet`, `sanction_records.parquet`, `ground_truth.parquet` ⭐
+- [x] A `manifest.json` beside them recording seed, corruption level, counts, generator version and a content hash ⭐
+- [x] Seeding is idempotent — re-running the same seed overwrites with identical content
+- [x] `ParquetRecordStore` implementing the Stage 0 `RecordStore` protocol ⭐
+- [x] `ParquetRecordStore.snapshot_hash()` returns a stable, order-independent hash — the same contract Postgres will honour later ⭐
+- [x] Dataset loads into memory in a few seconds; 50k providers fit comfortably
 
 ### Documentation
 
-- [ ] `docs/scenario_catalogue.md` — one entry per scenario: what it is, what it is designed to break, how many records, expected outcome
-- [ ] Document the corruption families and what each simulates in the real world
+- [x] `docs/scenario_catalogue.md` — one entry per scenario: what it is, what it is designed to break, how many records, expected outcome
+- [x] Document the corruption families and what each simulates in the real world
 
 ### GATE 1
-- [ ] `make seed CORRUPTION=0.5` completes in under 60 seconds
-- [ ] `providers.parquet` holds 50,000 rows
-- [ ] `sanction_records.parquet` holds 5,000 rows
-- [ ] Every sanction record has exactly one ground-truth row (verified programmatically, not by eye)
-- [ ] Re-running with the same seed produces byte-identical files (compare hashes) ⭐
-- [ ] `ParquetRecordStore` satisfies the `RecordStore` protocol under mypy ⭐
-- [ ] `docs/scenario_catalogue.md` covers all eight spec scenarios
-- [ ] Spot-check 20 corrupted records by hand against their corruption profile
+- [x] `make seed CORRUPTION=0.5` completes in under 60 seconds
+- [x] `providers.parquet` holds 50,000 rows
+- [x] `sanction_records.parquet` holds 5,000 rows
+- [x] Every sanction record has exactly one ground-truth row (verified programmatically, not by eye)
+- [x] Re-running with the same seed produces byte-identical files (compare hashes) ⭐
+- [x] `ParquetRecordStore` satisfies the `RecordStore` protocol under mypy ⭐
+- [x] `docs/scenario_catalogue.md` covers all eight spec scenarios
+- [x] Spot-check 20 corrupted records by hand against their corruption profile
 
 ---
 

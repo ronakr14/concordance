@@ -1,0 +1,51 @@
+state,state_name,weight
+CA,California,39.5000
+TX,Texas,29.1000
+FL,Florida,21.5000
+NY,New York,20.2000
+PA,Pennsylvania,13.0000
+IL,Illinois,12.8000
+OH,Ohio,11.8000
+GA,Georgia,10.7000
+NC,North Carolina,10.4000
+MI,Michigan,10.0000
+NJ,New Jersey,9.3000
+VA,Virginia,8.6000
+WA,Washington,7.7000
+AZ,Arizona,7.2000
+MA,Massachusetts,7.0000
+TN,Tennessee,6.9000
+IN,Indiana,6.8000
+MD,Maryland,6.2000
+MO,Missouri,6.2000
+WI,Wisconsin,5.9000
+CO,Colorado,5.8000
+MN,Minnesota,5.7000
+SC,South Carolina,5.1000
+AL,Alabama,5.0000
+LA,Louisiana,4.6000
+KY,Kentucky,4.5000
+OR,Oregon,4.2000
+OK,Oklahoma,4.0000
+CT,Connecticut,3.6000
+UT,Utah,3.3000
+IA,Iowa,3.2000
+NV,Nevada,3.1000
+AR,Arkansas,3.0000
+MS,Mississippi,3.0000
+KS,Kansas,2.9000
+NM,New Mexico,2.1000
+NE,Nebraska,1.9000
+ID,Idaho,1.8000
+WV,West Virginia,1.8000
+HI,Hawaii,1.4000
+NH,New Hampshire,1.4000
+ME,Maine,1.3000
+MT,Montana,1.1000
+RI,Rhode Island,1.1000
+DE,Delaware,1.0000
+SD,South Dakota,0.9000
+ND,North Dakota,0.8000
+AK,Alaska,0.7000
+VT,Vermont,0.6000
+WY,Wyoming,0.6000
