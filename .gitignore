@@ -7,7 +7,9 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-data/generated/
+# Every generated dataset, not only the default one: `match blocking-recall
+# --corruption X` writes data/blocking-X/.
+data/
 reports/
 .cache/llm/
 *.egg-info/
