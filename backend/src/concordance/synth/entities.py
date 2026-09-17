@@ -210,7 +210,10 @@ def plant_individual_clusters(f: EntityFactory, entities: list[dict[str, Any]], 
     """
     rng = f.r_cluster
     for g in range(n_groups):
-        kind = ("twins", "father_son", "common_name")[g % 3]
+        # `common_name` first because the `ambiguous` sanction scenario draws
+        # only from those clusters: a small dataset that plants one or two
+        # groups must still plant one of them.
+        kind = ("common_name", "twins", "father_son")[g % 3]
         cid = f"C{g:05d}-{kind}"
         base = f.individual()
         base["_cluster"], base["_cluster_role"] = cid, "anchor"
@@ -254,15 +257,22 @@ def plant_individual_clusters(f: EntityFactory, entities: list[dict[str, Any]], 
             entities.append(son)
 
         else:
-            # Two or three people sharing a name inside one state.
+            # Two or three people sharing a name inside one town. They share
+            # city and ZIP as well as name and state, and differ only in the
+            # fields the `ambiguous` sanction scenario strips - NPI, date of
+            # birth, street address, licence. That is what makes the scenario
+            # honest: a record drawn from this cluster is consistent with every
+            # member and with nobody else, so AMBIGUOUS is the right answer
+            # rather than merely a hard one. Sharing the ZIP also keeps the
+            # members reachable through the ZIP-and-name blocking key.
             for i in range(int(rng.integers(1, 3))):
                 twin = f.individual(
                     first_name=base["first_name"],
                     last_name=base["last_name"],
                     state=base["state"],
                 )
-                # Re-home into the anchor's state so the collision is real.
                 addr = f.address(state=base["state"])
+                addr["city"], addr["zip"] = base["city"], base["zip"]
                 twin.update(addr)
                 twin["_cluster"], twin["_cluster_role"] = cid, f"namesake{i + 1}"
                 entities.append(twin)

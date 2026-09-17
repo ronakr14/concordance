@@ -72,12 +72,21 @@ class TrigramIndex:
     """Inverted trigram index with a Jaccard-style overlap floor.
 
     Rare trigrams are the useful ones, so a posting list longer than
-    ``max_posting`` is skipped at query time: `MAR`, `SON` and `INC` would
+    ``max_posting`` can be skipped at query time: `MAR`, `SON` and `INC` would
     otherwise return a large share of the file and swamp the cap.
+
+    **The guard defaults to off, and only off preserves parity with Postgres.**
+    `pg_trgm` has no equivalent cut-off, so an index that skips long postings
+    returns a strictly smaller candidate set than `SqlCandidateGenerator` does
+    for the same record - measured at 85 of 300 records disagreeing with the
+    guard at 2,000, and 0 of 120 with it off. Two implementations of one
+    protocol that disagree are worth less than the time the guard saves, which
+    on 5,000 records is roughly 25 seconds. Set it only where a divergent but
+    faster index is knowingly acceptable, never on the path a gate compares.
     """
 
     floor: float = 0.3
-    max_posting: int = 2_000
+    max_posting: int | None = None
     postings: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     sizes: list[int] = field(default_factory=list)
 
@@ -95,7 +104,7 @@ class TrigramIndex:
         overlap: dict[int, int] = defaultdict(int)
         for gram in grams:
             posting = self.postings.get(gram)
-            if not posting or len(posting) > self.max_posting:
+            if not posting or (self.max_posting is not None and len(posting) > self.max_posting):
                 continue
             for doc_id in posting:
                 overlap[doc_id] += 1

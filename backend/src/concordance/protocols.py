@@ -57,6 +57,32 @@ class CandidateGenerator(Protocol):
 
 
 @runtime_checkable
+class Adjudicator(Protocol):
+    """Grey-band arbiter. The LLM at Stage 4; a no-op before then.
+
+    Declared at Stage 3 so the sweep can run the ``probabilistic_llm`` cell
+    before the LLM exists: `NullAdjudicator` abstains on every pair, the cell
+    completes honestly with zero calls, and Stage 4 substitutes the real
+    implementation without the evaluation harness changing.
+    """
+
+    name: str
+
+    def adjudicate(self, request: Any) -> Any:
+        """Decide one grey-band record, or abstain.
+
+        Takes an `AdjudicationRequest` and returns an `AdjudicationOutcome`
+        (both in ``matching.adjudication``). Typed loosely here because
+        ``protocols`` must not import the engine it is the seam for.
+        """
+        ...
+
+    def stats(self) -> dict[str, Any]:
+        """At least ``calls``, ``tokens`` and ``cost_usd``."""
+        ...
+
+
+@runtime_checkable
 class ResponseCache(Protocol):
     """Cache for LLM responses, keyed by model + prompt version + prompt."""
 

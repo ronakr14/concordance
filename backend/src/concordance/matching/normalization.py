@@ -49,8 +49,19 @@ _NEEDS_COLLAPSE = re.compile(r"\s\s|[\t\n\r\f\v]")
 _DIGITS = re.compile(r"\d+")
 _EIN = re.compile(r"^(\d{2})-?(\d{7})$")
 _MONTHS = {
-    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
-    "JUL": 7, "AUG": 8, "SEP": 9, "SEPT": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "SEPT": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
 }
 
 
@@ -160,7 +171,11 @@ def parse_date(value: str | date | None) -> PartialDate:
     # Month name forms: 16-OCT-1973, October 16, 1973, OCT 1973
     named = re.search(r"[A-Z]{3,}", text)
     if named and named.group()[:3] in _MONTHS:
-        month = _MONTHS[named.group()[:4]] if named.group()[:4] in _MONTHS else _MONTHS[named.group()[:3]]
+        month = (
+            _MONTHS[named.group()[:4]]
+            if named.group()[:4] in _MONTHS
+            else _MONTHS[named.group()[:3]]
+        )
         numbers = [int(n) for n in _DIGITS.findall(text)]
         year = next((n for n in numbers if n > 31), None)
         day = next((n for n in numbers if n <= 31), None)
@@ -256,9 +271,7 @@ def normalize_person_name(
     # PA-C into a name token.
     suffix_kept, suffix_dropped = strip_name_affixes(affix_tokens(suffix))
     dropped = dropped + suffix_dropped + suffix_kept
-    canonical = tuple(
-        NICKNAME_TO_CANONICAL.get(t, t) if i == 0 else t for i, t in enumerate(kept)
-    )
+    canonical = tuple(NICKNAME_TO_CANONICAL.get(t, t) if i == 0 else t for i, t in enumerate(kept))
     # Hyphenated surnames are one token in some sources and two in others.
     expanded: list[str] = []
     for token in canonical:
@@ -460,6 +473,10 @@ class NormalizedRecord:
     name_norm: str = ""
     name_sorted_norm: str = ""
     first_norm: str = ""
+    # The given name as written, folded but *not* nickname-canonicalized. The
+    # comparator needs it to tell an exact first-name agreement from a
+    # nickname equivalence; `first_norm` alone has already collapsed the two.
+    first_raw: str = ""
     last_norm: str = ""
     middle_initial: str = ""
     phonetic_keys: tuple[str, ...] = ()
@@ -548,14 +565,24 @@ def _normalize_parts(
         )
 
     ordered, sorted_form, dropped = normalize_person_name(first, middle, last, suffix)
+    first_raw = tokens(first)[0] if tokens(first) else ""
     first_norm = canonical_given_name(first)
-    last_norm = tokens(last)[-1] if tokens(last) else (ordered.split(" ")[-1] if ordered else "")
+    # The fallback exists for sources that put the whole name in one box: the
+    # last token is then the surname. It must not fire on a single token -
+    # calling a lone given name a surname manufactures a DISAGREE where the
+    # truth is MISSING, which is exactly the error the level table exists to
+    # prevent.
+    name_parts = ordered.split(" ") if ordered else []
+    last_norm = (
+        tokens(last)[-1] if tokens(last) else (name_parts[-1] if len(name_parts) > 1 else "")
+    )
     middle_tokens = tokens(middle)
     return NormalizedRecord(
         is_organization=False,
         name_norm=ordered,
         name_sorted_norm=sorted_form,
         first_norm=first_norm,
+        first_raw=first_raw,
         last_norm=last_norm,
         middle_initial=middle_tokens[0][0] if middle_tokens else "",
         phonetic_keys=phonetic_keys(last_norm),
@@ -633,10 +660,31 @@ def normalize_sanction(record: SanctionRecord) -> NormalizedRecord:
 
 _ORG_HINTS = frozenset(
     {
-        "CENTER", "CENTERS", "CENTRE", "CLINIC", "GROUP", "ASSOCIATES", "PARTNERS",
-        "SERVICES", "SPECIALISTS", "INSTITUTE", "PRACTICE", "NETWORK", "SYSTEMS",
-        "HOSPITAL", "HEALTH", "HEALTHCARE", "MEDICAL", "PHARMACY", "LABORATORY",
-        "AGENCY", "HOSPICE", "AMBULANCE", "NURSING", "CARE", "THERAPY",
+        "CENTER",
+        "CENTERS",
+        "CENTRE",
+        "CLINIC",
+        "GROUP",
+        "ASSOCIATES",
+        "PARTNERS",
+        "SERVICES",
+        "SPECIALISTS",
+        "INSTITUTE",
+        "PRACTICE",
+        "NETWORK",
+        "SYSTEMS",
+        "HOSPITAL",
+        "HEALTH",
+        "HEALTHCARE",
+        "MEDICAL",
+        "PHARMACY",
+        "LABORATORY",
+        "AGENCY",
+        "HOSPICE",
+        "AMBULANCE",
+        "NURSING",
+        "CARE",
+        "THERAPY",
     }
 )
 

@@ -90,7 +90,30 @@ def test_cli_version() -> None:
 
 
 @pytest.mark.unit
-def test_unbuilt_commands_name_their_stage() -> None:
-    result = runner.invoke(app, ["match", "fit"])
-    assert result.exit_code == 2
-    assert "Stage 3" in result.stdout
+def test_the_placeholder_helper_names_its_stage() -> None:
+    """A command for a stage not yet built exits 2 and says which stage.
+
+    `match fit` was once a placeholder, then `llm ping`, then `db upgrade` and
+    `db load` - all of them real now, which is the point of the pattern: the
+    surface of the finished system is visible from day one and each placeholder
+    disappears the moment its stage lands. Stages 0-5 have exhausted the list,
+    so the helper itself is what is left to test until Stage 6 registers the
+    next batch.
+    """
+    import typer
+
+    from concordance.cli import _not_until
+
+    with pytest.raises(typer.Exit) as raised:
+        _not_until(6, "Run orchestration")
+    assert raised.value.exit_code == 2
+
+
+@pytest.mark.unit
+def test_stage_five_commands_are_no_longer_placeholders() -> None:
+    """`db upgrade` and `db load` are real, and their help says what they do."""
+    result = runner.invoke(app, ["db", "--help"])
+    assert result.exit_code == 0
+    for command in ("upgrade", "downgrade", "load", "reset", "ping", "import-cache"):
+        assert command in result.stdout
+    assert "Stage 5" not in result.stdout

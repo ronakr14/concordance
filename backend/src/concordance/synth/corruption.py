@@ -283,12 +283,19 @@ def _op_addr_wrong_zip(rec: Record, rng: np.random.Generator, ref: Reference) ->
     st = rec.get("state")
     if not st or st not in ref.cities_by_state:
         return None
+    # Corruption perturbs what is there; it never fabricates. A record with no
+    # ZIP has to stay without one, because MISSING is its own comparator level
+    # and inventing a value turns an absence into evidence.
+    if not rec.get("zip"):
+        return None
     options = ref.cities_by_state[st]
     _, zip3 = options[int(rng.integers(0, len(options)))]
     return {"zip": f"{zip3}{int(rng.integers(0, 100)):02d}"}
 
 
 def _op_addr_po_box(rec: Record, rng: np.random.Generator, ref: Reference) -> Change | None:
+    if not rec.get("address_line1"):
+        return None
     return {"address_line1": f"PO Box {int(rng.integers(10, 9999))}", "address_line2": None}
 
 

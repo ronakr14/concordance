@@ -9,7 +9,6 @@ Postgres query plan reordering rows cannot invalidate a replay.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from datetime import date, datetime
@@ -20,23 +19,10 @@ from typing import Any
 import pandas as pd
 
 from concordance.domain import GroundTruth, Outcome, Provider, SanctionRecord
-
-# The fields the hash covers, in this order. Storage-specific extras - the
-# cluster columns, the raw payload - are deliberately excluded so two backends
-# holding the same records agree.
-PROVIDER_HASH_FIELDS = (
-    "provider_id", "npi", "first_name", "middle_name", "last_name", "suffix", "dob",
-    "address_line1", "address_line2", "city", "state", "zip",
-    "license_number", "license_state", "specialty",
-    "organization_name", "dba_name", "ein", "is_organization", "status",
-)
-
-SANCTION_HASH_FIELDS = (
-    "record_id", "source_authority", "npi", "first_name", "middle_name", "last_name",
-    "suffix", "dob", "address_line1", "address_line2", "city", "state", "zip",
-    "license_number", "license_state", "specialty",
-    "organization_name", "dba_name", "ein", "is_organization",
-    "sanction_type", "exclusion_date", "reinstatement_date",
+from concordance.store.hashing import (
+    PROVIDER_HASH_FIELDS,
+    SANCTION_HASH_FIELDS,
+    combined_hash,
 )
 
 
@@ -73,40 +59,15 @@ def _as_date(value: Any) -> date | None:
         return None
 
 
-def _canonical(value: Any) -> str:
-    v = _clean(value)
-    if v is None:
-        return ""
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, datetime):
-        return v.date().isoformat()
-    if isinstance(v, date):
-        return v.isoformat()
-    return str(v)
-
-
-def _row_digest(row: dict[str, Any], fields: tuple[str, ...]) -> bytes:
-    payload = "\x1f".join(_canonical(row.get(f)) for f in fields)
-    return hashlib.sha256(payload.encode("utf-8")).digest()
-
-
-def combined_hash(rows: Iterable[dict[str, Any]], fields: tuple[str, ...]) -> str:
-    """Order-independent content hash: sort row digests, then hash them."""
-    digests = sorted(_row_digest(r, fields) for r in rows)
-    h = hashlib.sha256()
-    for d in digests:
-        h.update(d)
-    return h.hexdigest()
-
-
 class ParquetRecordStore:
     """Reads `providers.parquet`, `sanction_records.parquet`, `ground_truth.parquet`."""
 
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
         if not (self.path / "providers.parquet").exists():
-            raise FileNotFoundError(f"no dataset at {self.path} - run `concordance data seed` first")
+            raise FileNotFoundError(
+                f"no dataset at {self.path} - run `concordance data seed` first"
+            )
 
     # -- frames (lazy, cached) -------------------------------------------
     @cached_property
@@ -124,7 +85,9 @@ class ParquetRecordStore:
     @cached_property
     def manifest(self) -> dict[str, Any]:
         manifest_path = self.path / "manifest.json"
-        return json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+        return (
+            json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+        )
 
     @cached_property
     def _by_id(self) -> dict[str, Provider]:
@@ -227,6 +190,8 @@ class ParquetRecordStore:
                 expected_outcome=Outcome(str(row["expected_outcome"])),
                 expected_provider_id=_as_str(row.get("expected_provider_id")),
                 scenario_tag=_as_str(row.get("scenario_tag")) or "",
-                corruption_profile=json.loads(profile) if isinstance(profile, str) and profile else {},
+                corruption_profile=json.loads(profile)
+                if isinstance(profile, str) and profile
+                else {},
             )
         return out

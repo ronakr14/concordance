@@ -5,7 +5,7 @@ PY ?= python
 RUN := $(PY) tasks.py
 
 # Forward make-style variables through to tasks.py.
-VARS := $(foreach v,CORRUPTION PROVIDERS SANCTIONS SEED LIMIT SCENARIO,$(if $($(v)),$(v)=$($(v))))
+VARS := $(foreach v,CORRUPTION PROVIDERS SANCTIONS SEED LIMIT SCENARIO STRATEGY LEVELS STRATEGIES WORKERS MAX_CANDIDATES,$(if $($(v)),$(v)=$($(v))))
 
 .PHONY: seed verify inspect fit eval sweep test test-unit cov lint fmt typecheck clean \
         up down migrate load api worker web help

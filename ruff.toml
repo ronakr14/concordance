@@ -16,6 +16,14 @@ ignore = ["E501"]
 # Corruption operations share one signature so they can live in a registry;
 # most of them need only part of it.
 "backend/src/concordance/synth/corruption.py" = ["ARG001"]
+# The provider error taxonomy is named for the condition, not the class - the
+# router reads `except RateLimited`, and PLAN's Stage 4 checklist fixes these
+# exact names. An `Error` suffix on every one of them adds nothing.
+"backend/src/concordance/llm/errors.py" = ["N818"]
+"backend/src/concordance/llm/prompt.py" = ["N818"]
+# `NullCache` implements the `ResponseCache` protocol and must keep its
+# parameter names; ignoring them is the whole behaviour.
+"backend/src/concordance/llm/cache.py" = ["ARG002"]
 
 [lint.isort]
 known-first-party = ["concordance"]

@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `3 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
+Progress: `5 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -52,11 +52,11 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 
 ### Needed before Stage 4 (LLM layer)
 
-- [ ] Create OpenRouter account; generate API key
-- [ ] Create Groq account; generate API key
-- [ ] Identify at least two free models on each provider that support JSON output
-- [ ] Record per-model context window and rate limits in `docs/llm_providers.md`
-- [ ] Confirm neither key is ever written to a tracked file
+- [x] Create OpenRouter account; generate API key
+- [x] Create Groq account; generate API key
+- [x] Identify at least two free models on each provider that support JSON output
+- [x] Record per-model context window and rate limits in `docs/llm_providers.md`
+- [x] Confirm neither key is ever written to a tracked file
 
 ### Needed before Stage 5 (Persistence) ⭐
 
@@ -391,119 +391,173 @@ Stage 5; this one is kept permanently because it is what makes the Stage 3 sweep
 
 ### `comparators.py`
 
-- [ ] `last_name`: exact / phonetic / JW≥.92 / JW≥.85 / disagree / missing
-- [ ] `first_name`: exact / nickname-equiv / initial-consistent / JW≥.85 / disagree / missing
-- [ ] `dob`: exact / transposed-parts / year+month / year-only / disagree / missing
-- [ ] `address`: exact-norm / same-street-diff-unit / token-set≥.9 / same-zip-only / disagree / missing
-- [ ] `state`: exact / disagree / missing
-- [ ] `zip`: zip5-exact / zip3-exact / disagree / missing
-- [ ] `license`: exact+state / exact-diff-state / disagree / missing
-- [ ] `npi`: valid-exact / valid-disagree / one-invalid / both-invalid
-- [ ] **`missing` is always its own level, never folded into `disagree`** ⭐
-- [ ] Levels are ordinal enums with stable integer codes — the EM tables index on them
-- [ ] Comparison vector assembly returns a fixed-length tuple, same order every time
-- [ ] Unit test per field covering every level
+- [x] `last_name`: exact / phonetic / JW≥.92 / JW≥.85 / disagree / missing
+- [x] `first_name`: exact / nickname-equiv / initial-consistent / JW≥.85 / disagree / missing
+- [x] `dob`: exact / transposed-parts / year+month / year-only / disagree / missing
+- [x] `address`: exact-norm / same-street-diff-unit / token-set≥.9 / same-zip-only / disagree / missing
+- [x] `state`: exact / disagree / missing
+- [x] `zip`: zip5-exact / zip3-exact / disagree / missing
+- [x] `license`: exact+state / exact-diff-state / disagree / missing
+- [x] `npi`: valid-exact / valid-disagree / one-invalid / both-invalid
+- [x] **`missing` is always its own level, never folded into `disagree`** ⭐
+- [x] Levels are ordinal enums with stable integer codes — the EM tables index on them
+- [x] Comparison vector assembly returns a fixed-length tuple, same order every time
+- [x] Unit test per field covering every level
 
 #### Organization comparison vector ⭐ (Q2 — separate model)
 
-- [ ] `legal_name`: exact / token-set≥.9 / acronym-expanded-equiv / JW≥.85 / disagree / missing
-- [ ] `dba_alias`: exact / token-set≥.9 / disagree / missing
-- [ ] `ein`: valid-exact / valid-disagree / one-invalid / both-invalid
-- [ ] `npi` (type-2): valid-exact / valid-disagree / one-invalid / both-invalid
-- [ ] `address`, `state`, `zip`: same levels as the individual vector
-- [ ] `is_organization` routes to one of the two pipelines at the top of `scorer.py` ⭐
-- [ ] Cross-type pairs (org vs individual) handled explicitly, not silently scored
-- [ ] Unit test per organization field covering every level
+- [x] `legal_name`: exact / token-set≥.9 / acronym-expanded-equiv / JW≥.85 / disagree / missing
+- [x] `dba_alias`: exact / token-set≥.9 / disagree / missing
+- [x] `ein`: valid-exact / valid-disagree / one-invalid / both-invalid
+- [x] `npi` (type-2): valid-exact / valid-disagree / one-invalid / both-invalid
+- [x] `address`, `state`, `zip`: same levels as the individual vector
+- [x] `is_organization` routes to one of the two pipelines at the top of `scorer.py` ⭐
+- [x] Cross-type pairs (org vs individual) handled explicitly, not silently scored
+- [x] Unit test per organization field covering every level
 
 ### `fellegi_sunter.py` ⭐
 
-- [ ] Data structures for `m[field][level]`, `u[field][level]`, `lambda`
-- [ ] E-step: posterior responsibility per candidate pair
-- [ ] M-step: re-estimate m, u, λ from weighted level counts
-- [ ] Laplace smoothing on level counts
-- [ ] Floor on `u` so a rare-value agreement cannot produce an infinite weight ⭐
-- [ ] Convergence criterion on log-likelihood delta, plus a max-iteration cap
-- [ ] Fixed random restarts, deterministic under a seed ⭐
-- [ ] Sensible initialization (optionally warm-started from a small labelled slice)
-- [ ] Convergence log (iteration, log-likelihood, λ) persisted with the fitted config
-- [ ] Match weight: `w = Σ log2(m / u)` over the observed levels
-- [ ] Posterior: `1 / (1 + exp(-(w·ln2 + logit(λ))))`
-- [ ] Per-field weight contribution returned alongside the total ⭐ — the Investigation UI needs it
-- [ ] Guard against degenerate solutions: detect λ collapsing to 0 or 1 and fail loudly
-- [ ] Fitted parameters serialize to and from `scoring_configs.params` JSONB losslessly
-- [ ] **Two independent EM fits — individual and organization** — stored as separate keys in one config row (Q2) ⭐
-- [ ] Separate threshold pair per model; neither model's statistics contaminate the other ⭐
-- [ ] Organization fit guarded for small-sample instability (fewer orgs than individuals)
+- [x] Data structures for `m[field][level]`, `u[field][level]`, `lambda`
+- [x] E-step: posterior responsibility per candidate pair
+- [x] M-step: re-estimate m, u, λ from weighted level counts
+- [x] Laplace smoothing on level counts
+- [x] Floor on `u` so a rare-value agreement cannot produce an infinite weight ⭐
+- [x] Convergence criterion on log-likelihood delta, plus a max-iteration cap
+- [x] Fixed random restarts, deterministic under a seed ⭐
+- [x] Sensible initialization (optionally warm-started from a small labelled slice)
+- [x] Convergence log (iteration, log-likelihood, λ) persisted with the fitted config
+- [x] Match weight: `w = Σ log2(m / u)` over the observed levels
+- [x] Posterior: `1 / (1 + exp(-(w·ln2 + logit(λ))))`
+- [x] Per-field weight contribution returned alongside the total ⭐ — the Investigation UI needs it
+- [x] Guard against degenerate solutions: detect λ collapsing to 0 or 1 and fail loudly
+- [x] Fitted parameters serialize to and from `scoring_configs.params` JSONB losslessly
+- [x] **Two independent EM fits — individual and organization** — stored as separate keys in one config row (Q2) ⭐
+- [x] Separate threshold pair per model; neither model's statistics contaminate the other ⭐
+- [x] Organization fit guarded for small-sample instability (fewer orgs than individuals)
 
 ### `calibration.py` ⭐
 
-- [ ] Deterministic fit/holdout split of ground truth, seeded
-- [ ] Reliability diagram over 10 bins — bin edges, count, mean predicted, observed frequency
-- [ ] Expected Calibration Error
-- [ ] Brier score
-- [ ] Isotonic regression calibrator fitted on the fit split
-- [ ] Calibrator serialized into `scoring_configs.calibrator`
-- [ ] Metrics computed **before and after** calibration, both retained for the UI ⭐
-- [ ] Calibrator application is a pure function of the stored parameters — no refit at inference
+- [x] Deterministic fit/holdout split of ground truth, seeded
+- [x] Reliability diagram over 10 bins — bin edges, count, mean predicted, observed frequency
+- [x] Expected Calibration Error
+- [x] Brier score
+- [x] Isotonic regression calibrator fitted on the fit split
+- [x] Calibrator serialized into `scoring_configs.calibrator`
+- [x] Metrics computed **before and after** calibration, both retained for the UI ⭐
+- [x] Calibrator application is a pure function of the stored parameters — no refit at inference
 
 ### Threshold selection
 
-- [ ] `t_auto_accept` = lowest confidence where holdout precision ≥ `TARGET_PRECISION` (default 0.99)
-- [ ] `t_auto_reject` = symmetric selection on recall
-- [ ] Grey-band width reported as a percentage of volume ⭐
-- [ ] Thresholds written into the `scoring_configs` row, never hardcoded
+- [x] `t_auto_accept` = lowest confidence where holdout precision ≥ `TARGET_PRECISION` (default 0.99)
+- [x] `t_auto_reject` = symmetric selection on recall
+- [x] Grey-band width reported as a percentage of volume ⭐
+- [x] Thresholds written into the `scoring_configs` row, never hardcoded
 
 ### `scorer.py`
 
-- [ ] Deterministic path: valid NPI exact match short-circuits to `MATCH`
-- [ ] Deterministic path flags conflicting attributes for review rather than silently accepting ⭐ (source spec, Role 2 stage 3)
-- [ ] Probabilistic path: compare vector → weight → posterior → calibrate
-- [ ] Candidate ranking by calibrated confidence, top-K retained
-- [ ] Routing decision: above accept → `MATCH`; below reject → `NO_MATCH`; between → grey band
-- [ ] Margin check: if top two candidates are within a configurable delta, force `AMBIGUOUS` regardless of absolute confidence ⭐
-- [ ] Returns a structured result carrying decision, confidence, route, per-candidate field levels and weights
+- [x] Deterministic path: valid NPI exact match short-circuits to `MATCH`
+- [x] Deterministic path flags conflicting attributes for review rather than silently accepting ⭐ (source spec, Role 2 stage 3)
+- [x] Probabilistic path: compare vector → weight → posterior → calibrate
+- [x] Candidate ranking by calibrated confidence, top-K retained
+- [x] Routing decision: above accept → `MATCH`; below reject → `NO_MATCH`; between → grey band
+- [x] Margin check: if top two candidates are within a configurable delta, force `AMBIGUOUS` regardless of absolute confidence ⭐
+- [x] Returns a structured result carrying decision, confidence, route, per-candidate field levels and weights
 
 ### `eval/` harness
 
-- [ ] Precision, recall, F1
-- [ ] False-positive and false-negative counts
-- [ ] Confusion matrix across `MATCH` / `AMBIGUOUS` / `NO_MATCH`
-- [ ] Per-scenario breakdown using `ground_truth.scenario_tag` (all eight scenarios)
-- [ ] **Individual and organization metrics reported separately as well as combined** (Q2) ⭐
-- [ ] Calibration metrics (ECE, Brier, reliability bins)
-- [ ] Blocking recall carried through into the report
-- [ ] LLM call count, tokens, cost, when the strategy includes the LLM
-- [ ] Mean latency per pipeline stage
-- [ ] Ambiguous-handling metric: how often `AMBIGUOUS` was the *correct* answer
-- [ ] Results written as JSON under `reports/` — the same payload shape that becomes an `eval_runs` row in Stage 5 ⭐
-- [ ] Self-contained HTML report with the reliability diagram and robustness curve rendered as inline SVG ⭐
-- [ ] Report is the Stage 3 portfolio artifact — readable standalone, no server needed ⭐
+- [x] Precision, recall, F1
+- [x] False-positive and false-negative counts
+- [x] Confusion matrix across `MATCH` / `AMBIGUOUS` / `NO_MATCH`
+- [x] Per-scenario breakdown using `ground_truth.scenario_tag` (all eight scenarios)
+- [x] **Individual and organization metrics reported separately as well as combined** (Q2) ⭐
+- [x] Calibration metrics (ECE, Brier, reliability bins)
+- [x] Blocking recall carried through into the report
+- [x] LLM call count, tokens, cost, when the strategy includes the LLM
+- [x] Mean latency per pipeline stage
+- [x] Ambiguous-handling metric: how often `AMBIGUOUS` was the *correct* answer
+- [x] Results written as JSON under `reports/` — the same payload shape that becomes an `eval_runs` row in Stage 5 ⭐
+- [x] Self-contained HTML report with the reliability diagram and robustness curve rendered as inline SVG ⭐
+- [x] Report is the Stage 3 portfolio artifact — readable standalone, no server needed ⭐
 
 ### CLI
 
-- [ ] `concordance match fit --corruption X --seed S` → writes a versioned config **JSON file** under `data/configs/` ⭐
-- [ ] Config JSON is exactly the payload that becomes a `scoring_configs` row in Stage 5 — no reshaping later ⭐
-- [ ] `concordance eval --config-id N --strategy S`
-- [ ] `concordance sweep` — corruption `0.0 → 0.9` × strategies `{deterministic, fuzzy, probabilistic, probabilistic_llm}` ⭐
-- [ ] Sweep writes one `eval_runs` row per cell
-- [ ] Fuzzy-only baseline strategy implemented for comparison ⭐
-- [ ] Deterministic-only baseline strategy implemented for comparison
+- [x] `concordance match fit --corruption X --seed S` → writes a versioned config **JSON file** under `data/configs/` ⭐
+- [x] Config JSON is exactly the payload that becomes a `scoring_configs` row in Stage 5 — no reshaping later ⭐
+- [x] `concordance eval --config-id N --strategy S`
+- [x] `concordance sweep` — corruption `0.0 → 0.9` × strategies `{deterministic, fuzzy, probabilistic, probabilistic_llm}` ⭐
+- [x] Sweep writes one `eval_runs` row per cell
+- [x] Fuzzy-only baseline strategy implemented for comparison ⭐
+- [x] Deterministic-only baseline strategy implemented for comparison
 
 ### Documentation
 
-- [ ] `docs/matching_engine.md` — the full Fellegi–Sunter derivation, the level tables, the guard rails, and why learned weights beat hand-tuned ones ⭐
-- [ ] `docs/matching_engine.md` explains **why individuals and organizations get separate fits** — the missing-level contamination argument (Q2) ⭐
+- [x] `docs/matching_engine.md` — the full Fellegi–Sunter derivation, the level tables, the guard rails, and why learned weights beat hand-tuned ones ⭐
+- [x] `docs/matching_engine.md` explains **why individuals and organizations get separate fits** — the missing-level contamination argument (Q2) ⭐
 
 ### GATE 3
-- [ ] EM converges on repeated runs with the same seed to identical parameters ⭐
-- [ ] Holdout **ECE < 0.05** after isotonic calibration ⭐
-- [ ] Both models fitted; individual and organization metrics reported separately ⭐
-- [ ] Probabilistic F1 beats fuzzy-only F1 by a clear margin at corruption ≥ 0.4 ⭐
-- [ ] Reliability diagram data renders correctly (verify the numbers, chart comes in Stage 9)
-- [ ] `concordance match sweep` completes every cell (10 levels × 4 strategies) **in minutes, not hours** ⭐
-- [ ] Standalone HTML evaluation report opens in a browser with both charts rendered ⭐
-- [ ] Per-scenario breakdown shows a sane result for all eight scenarios
-- [ ] `docs/matching_engine.md` written and accurate
+- [x] EM converges on repeated runs with the same seed to identical parameters ⭐
+- [x] Holdout **ECE < 0.05** after isotonic calibration ⭐
+- [x] Both models fitted; individual and organization metrics reported separately ⭐
+- [x] Probabilistic F1 beats fuzzy-only F1 by a clear margin at corruption ≥ 0.4 ⭐
+- [x] Reliability diagram data renders correctly (verify the numbers, chart comes in Stage 9)
+- [x] `concordance match sweep` completes every cell (10 levels × 4 strategies) **in minutes, not hours** ⭐
+- [x] Standalone HTML evaluation report opens in a browser with both charts rendered ⭐
+- [x] Per-scenario breakdown shows a sane result for all eight scenarios
+- [x] `docs/matching_engine.md` written and accurate
+
+---
+
+### Carried forward from Stage 3
+
+Three findings that Stage 3 surfaced and could not fix from inside itself. Two
+are now fixed; the third is deliberately deferred to Stage 4, where it can be
+measured rather than guessed. All three are written up in
+`docs/matching_engine.md` §9 with the before-and-after numbers.
+
+- [x] **Stage 1 — the `ambiguous` scenario was mostly not ambiguous.** Fixed in
+      two halves. The scenario now draws only from `common_name` clusters and
+      strips the licence as well as NPI, DOB and street address; and the
+      `common_name` cluster itself was tightened so its members share city and
+      ZIP as well as name and state. Stripping the city and ZIP from the record
+      instead — the obvious first attempt — left it consistent with every
+      same-named provider in the state and pushed holdout ECE to 0.072, so the
+      cluster had to carry the fix rather than the scenario alone.
+      `ambiguous_accuracy` 0.068 → **0.910**, overall precision 0.898 →
+      **0.984**, F1 at corruption 0.5 0.905 → **0.945**.
+- [x] **Stage 1 — the organization model had no negatives.** Two organization
+      negative scenarios added: `org_unmatched` (0.04 of the file) and
+      `org_false_positive_bait` (0.03 — same legal name, DBA and state as a real
+      organization, different EIN and type-2 NPI). `unmatched` is now
+      individual-only so each model owns its negatives. The organization accept
+      threshold is a real cut at **0.807** where it was previously
+      unidentifiable. The fewer-than-twenty-negatives warning stays, because a
+      small slice can still hit the condition.
+- [x] **`address_variation` is the weakest scenario at 0.656 recall — deferred
+      to Stage 4 by decision, not left unnoticed.** Precision on the scenario is
+      1.000: every miss is routed to review rather than decided wrongly, which
+      is the correct failure. The grey band is exactly what the Stage 4
+      adjudicator exists to consume, so whether more comparator work pays is a
+      question to answer against that baseline. **Answered at GATE 4: the
+      adjudicator recovers them.** On a 20-record sample, recall 0.500 →
+      **0.850** with precision still 1.000 and no wrong-provider assignment, so
+      no further comparator work on address is scheduled. Sample-sized because
+      Groq's free tier allows 8,000 tokens per minute and one adjudication costs
+      about 3,000; re-measure on the full 500 when a paid tier is available.
+      Written up in `docs/matching_engine.md` §9.
+
+Two defects found while re-measuring, both fixed:
+
+- [x] **Corruption could fabricate a value into an empty field.** `wrong_zip`
+      invented a ZIP for a record that had none and `po_box` invented a street
+      address, so a stripped field came back as evidence and `MISSING` stopped
+      meaning missing. Every other operation already guarded on the field being
+      present; these two now do too.
+- [x] **The sweep silently reused datasets from an older generator.** `reuse`
+      checked only that `providers.parquet` existed, so a sweep run after a
+      generator change measured stale data and produced plausible-looking
+      numbers. Reuse now compares the cached manifest's `generator_version`,
+      seed, corruption level and counts, and `GENERATOR_VERSION` is bumped
+      whenever generator output changes.
 
 ---
 
@@ -511,96 +565,96 @@ Stage 5; this one is kept permanently because it is what makes the Stage 3 sweep
 
 ### Provider abstraction
 
-- [ ] `LLMProvider` protocol — `complete(messages, schema, **opts) -> LLMResponse`
-- [ ] `openrouter.py` implementation
-- [ ] `groq.py` implementation
-- [ ] Normalized `LLMResponse`: content, model, prompt_tokens, completion_tokens, latency_ms, raw
-- [ ] Per-provider error taxonomy mapped to shared exceptions: `RateLimited`, `Transient`, `InvalidRequest`, `AuthFailed`
-- [ ] Timeouts on every call, configurable
-- [ ] `supports_structured_output` capability flag on each provider, **default false** (Q6) ⭐
-- [ ] Router reads the flag but always takes the prompt-based JSON path for now — so the repair path stays the tested path, not dead code ⭐
-- [ ] Prompt budget sized for a small free-tier context window; top-K is configurable so a larger production model needs no contract change
+- [x] `LLMProvider` protocol — `complete(messages, schema, **opts) -> LLMResponse`
+- [x] `openrouter.py` implementation
+- [x] `groq.py` implementation
+- [x] Normalized `LLMResponse`: content, model, prompt_tokens, completion_tokens, latency_ms, raw
+- [x] Per-provider error taxonomy mapped to shared exceptions: `RateLimited`, `Transient`, `InvalidRequest`, `AuthFailed`
+- [x] Timeouts on every call, configurable
+- [x] `supports_structured_output` capability flag on each provider, **default false** (Q6) ⭐
+- [x] Router reads the flag but always takes the prompt-based JSON path for now — so the repair path stays the tested path, not dead code ⭐
+- [x] Prompt budget sized for a small free-tier context window; top-K is configurable so a larger production model needs no contract change
 
 ### `router.py`
 
-- [ ] Fallback chain driven by `LLM_PROVIDER_CHAIN` setting (default Groq → OpenRouter)
-- [ ] Retries with jittered exponential backoff on `Transient` and `RateLimited`
-- [ ] Move to the next provider after exhausting retries, not on first error
-- [ ] Per-call token accounting
-- [ ] Per-call cost accounting from a configurable price table
-- [ ] `LLM_ENABLED=false` short-circuits to `AMBIGUOUS` — full pipeline must run with no LLM at all ⭐
-- [ ] All calls logged with request_id, provider, model, latency, tokens
-- [ ] Never log API keys; never log raw provider error bodies containing keys
+- [x] Fallback chain driven by `LLM_PROVIDER_CHAIN` setting (default Groq → OpenRouter)
+- [x] Retries with jittered exponential backoff on `Transient` and `RateLimited`
+- [x] Move to the next provider after exhausting retries, not on first error
+- [x] Per-call token accounting
+- [x] Per-call cost accounting from a configurable price table
+- [x] `LLM_ENABLED=false` short-circuits to `AMBIGUOUS` — full pipeline must run with no LLM at all ⭐
+- [x] All calls logged with request_id, provider, model, latency, tokens
+- [x] Never log API keys; never log raw provider error bodies containing keys
 
 ### `cache.py` — `FileCache`
 
 Implements the Stage 0 `ResponseCache` protocol. `PostgresCache` arrives in Stage 5;
 this one stays as the cache the CLI and the sweep use.
 
-- [ ] Cache key = `sha256(provider + model + prompt_version + rendered_prompt)` ⭐
-- [ ] `FileCache` storing one JSON file per key under `.cache/llm/`, sharded by key prefix ⭐
-- [ ] Read-through: hit returns the stored response without a network call
-- [ ] Write on success only; failures are not cached
-- [ ] Cache hit/miss counters surfaced in the run summary
-- [ ] Stored entry carries everything a `llm_calls` row needs — provider, model, prompt version, request, response, latency, tokens, cost — so Stage 5 migration is a straight import ⭐
-- [ ] `concordance llm cache-stats` and `concordance llm cache-clear`
+- [x] Cache key = `sha256(provider + model + prompt_version + rendered_prompt)` ⭐
+- [x] `FileCache` storing one JSON file per key under `.cache/llm/`, sharded by key prefix ⭐
+- [x] Read-through: hit returns the stored response without a network call
+- [x] Write on success only; failures are not cached
+- [x] Cache hit/miss counters surfaced in the run summary
+- [x] Stored entry carries everything a `llm_calls` row needs — provider, model, prompt version, request, response, latency, tokens, cost — so Stage 5 migration is a straight import ⭐
+- [x] `concordance llm cache-stats` and `concordance llm cache-clear`
 
 ### `schema.py`
 
-- [ ] JSON Schema for the adjudication response: `{decision, provider_id|null, confidence, evidence_cited[], reasoning}`
-- [ ] `decision` restricted to `MATCH` | `NO_CONFIDENT_MATCH` | `AMBIGUOUS`
-- [ ] Extract JSON from a response that wraps it in prose or code fences
-- [ ] Validate against the schema
-- [ ] On validation failure: **one** repair attempt, feeding the validation error back
-- [ ] On second failure: fall back to `AMBIGUOUS`, record the parse failure, never raise ⭐
-- [ ] `provider_id` must be one of the candidate ids supplied — reject otherwise
-- [ ] **Every `evidence_cited` entry must resolve to a field actually present in the prompt; reject the response if it cites unsupplied evidence** ⭐
-- [ ] Confidence coerced to `[0,1]`; out-of-range downgrades to `AMBIGUOUS`
+- [x] JSON Schema for the adjudication response: `{decision, provider_id|null, confidence, evidence_cited[], reasoning}`
+- [x] `decision` restricted to `MATCH` | `NO_CONFIDENT_MATCH` | `AMBIGUOUS`
+- [x] Extract JSON from a response that wraps it in prose or code fences
+- [x] Validate against the schema
+- [x] On validation failure: **one** repair attempt, feeding the validation error back
+- [x] On second failure: fall back to `AMBIGUOUS`, record the parse failure, never raise ⭐
+- [x] `provider_id` must be one of the candidate ids supplied — reject otherwise
+- [x] **Every `evidence_cited` entry must resolve to a field actually present in the prompt; reject the response if it cites unsupplied evidence** ⭐
+- [x] Confidence coerced to `[0,1]`; out-of-range downgrades to `AMBIGUOUS`
 
 ### Prompts
 
-- [ ] Prompts live in versioned files under `llm/prompts/`
-- [ ] `PROMPT_VERSION` constant written into every run and every cache key ⭐
-- [ ] System prompt states: resolve identity only ⭐
-- [ ] System prompt states: never judge misconduct, guilt, or sanction validity ⭐
-- [ ] System prompt states: never introduce a fact not in the supplied evidence ⭐
-- [ ] System prompt states: `NO_CONFIDENT_MATCH` / `AMBIGUOUS` is a correct answer, not a failure ⭐
-- [ ] Prompt receives **only normalized evidence and field scores — never raw free text from the source file** ⭐
-- [ ] Prompt includes top-K candidates only
-- [ ] Prompt includes per-field agreement levels and weight contributions
-- [ ] Few-shot examples included, one of which correctly answers `AMBIGUOUS`
-- [ ] Prompt injection surface reviewed: names and addresses are data, wrapped and delimited, never interpolated as instructions ⭐
+- [x] Prompts live in versioned files under `llm/prompts/`
+- [x] `PROMPT_VERSION` constant written into every run and every cache key ⭐
+- [x] System prompt states: resolve identity only ⭐
+- [x] System prompt states: never judge misconduct, guilt, or sanction validity ⭐
+- [x] System prompt states: never introduce a fact not in the supplied evidence ⭐
+- [x] System prompt states: `NO_CONFIDENT_MATCH` / `AMBIGUOUS` is a correct answer, not a failure ⭐
+- [x] Prompt receives **only normalized evidence and field scores — never raw free text from the source file** ⭐
+- [x] Prompt includes top-K candidates only
+- [x] Prompt includes per-field agreement levels and weight contributions
+- [x] Few-shot examples included, one of which correctly answers `AMBIGUOUS`
+- [x] Prompt injection surface reviewed: names and addresses are data, wrapped and delimited, never interpolated as instructions ⭐
 
 ### `ai_matcher.py`
 
-- [ ] Invoked only for grey-band pairs
-- [ ] Builds the evidence payload from `match_candidates`, not from raw records
-- [ ] Writes the cache entry and carries its key on the result (becomes `match_results.llm_call_id` in Stage 5)
-- [ ] Maps the LLM decision onto the engine's `MATCH` / `AMBIGUOUS` / `NO_MATCH` vocabulary
-- [ ] Carries the reasoning and `evidence_cited` on the result for later persistence and UI highlighting
+- [x] Invoked only for grey-band pairs
+- [x] Builds the evidence payload from `match_candidates`, not from raw records
+- [x] Writes the cache entry and carries its key on the result (becomes `match_results.llm_call_id` in Stage 5)
+- [x] Maps the LLM decision onto the engine's `MATCH` / `AMBIGUOUS` / `NO_MATCH` vocabulary
+- [x] Carries the reasoning and `evidence_cited` on the result for later persistence and UI highlighting
 
 ### Tests
 
-- [ ] Provider clients tested against recorded fixtures, not the live API
-- [ ] Cache hit path asserts zero HTTP calls
-- [ ] Malformed JSON → repair → success path
-- [ ] Malformed JSON → repair → still malformed → `AMBIGUOUS`, no exception
-- [ ] Response citing unsupplied evidence is rejected
-- [ ] Response naming a provider_id outside the candidate set is rejected
-- [ ] Rate-limit response triggers backoff then provider failover
-- [ ] `LLM_ENABLED=false` runs the whole pipeline
+- [x] Provider clients tested against recorded fixtures, not the live API
+- [x] Cache hit path asserts zero HTTP calls
+- [x] Malformed JSON → repair → success path
+- [x] Malformed JSON → repair → still malformed → `AMBIGUOUS`, no exception
+- [x] Response citing unsupplied evidence is rejected
+- [x] Response naming a provider_id outside the candidate set is rejected
+- [x] Rate-limit response triggers backoff then provider failover
+- [x] `LLM_ENABLED=false` runs the whole pipeline
 
 ### Documentation
 
-- [ ] `docs/llm_providers.md` — providers, models, limits, price table, chain configuration
+- [x] `docs/llm_providers.md` — providers, models, limits, price table, chain configuration
 
 ### GATE 4
-- [ ] A grey-band pair receives a real LLM decision end to end
-- [ ] Re-running the identical pair makes **zero** network calls (cache verified by counter) ⭐
-- [ ] Deliberately malformed model output degrades to `AMBIGUOUS` without raising ⭐
-- [ ] A response citing unsupplied evidence is rejected by the guard ⭐
-- [ ] Provider failover demonstrated (kill the first provider's key and observe the chain)
-- [ ] Full pipeline runs with `LLM_ENABLED=false`
+- [x] A grey-band pair receives a real LLM decision end to end
+- [x] Re-running the identical pair makes **zero** network calls (cache verified by counter) ⭐
+- [x] Deliberately malformed model output degrades to `AMBIGUOUS` without raising ⭐
+- [x] A response citing unsupplied evidence is rejected by the guard ⭐
+- [x] Provider failover demonstrated (kill the first provider's key and observe the chain)
+- [x] Full pipeline runs with `LLM_ENABLED=false`
 
 ---
 
@@ -613,156 +667,155 @@ Stages 1–4 does not change; if it does, the seam was wrong and that is the rea
 
 ### Postgres setup
 
-- [ ] `pip install -e .[db]` — SQLAlchemy, Alembic, psycopg now enter the project
-- [ ] `concordance` database created; application role with least privilege
-- [ ] `CREATE EXTENSION IF NOT EXISTS pg_trgm` in the first migration, before the GIN index ⭐
-- [ ] `DATABASE_URL` in `.env`, never committed
+- [x] `pip install -e .[db]` — SQLAlchemy, Alembic, psycopg now enter the project
+- [x] Database created; application role with least privilege — Neon-hosted **Postgres 17.11** (no admin rights on this machine, so no local install; PLAN's "16" is superseded and Stage 10's compose must pin 17 to match). `neondb_owner` owns the schema and runs migrations; `concordance_app` is the least-privilege role the application connects as, and the two must stay distinct or the audit-log revoke cannot bite
+- [x] `CREATE EXTENSION IF NOT EXISTS pg_trgm` in the first migration, before the GIN index ⭐
+- [x] `DATABASE_URL` in `.env`, never committed
 
 ### Alembic
 
-- [ ] `alembic init` inside `backend/`
-- [ ] Point `env.py` at `Settings.DATABASE_URL`
-- [ ] Point `target_metadata` at the SQLAlchemy `Base`
-- [ ] Enable `compare_type` and `compare_server_default` in `env.py`
+- [x] `alembic init` inside `backend/`
+- [x] Point `env.py` at `Settings.DATABASE_URL`
+- [x] Point `target_metadata` at the SQLAlchemy `Base`
+- [x] Enable `compare_type` and `compare_server_default` in `env.py`
 
 ### Base
 
-- [ ] `db/base.py` — declarative `Base`, naming convention for constraints and indexes
-- [ ] `db/session.py` — engine, `sessionmaker`, `get_session` dependency, context manager for the worker
-- [ ] Shared mixins: `TimestampMixin` (`created_at`, `updated_at`), UUID primary key default
-- [ ] Enum types defined once in Python and mapped to native Postgres enums or constrained varchars — pick one and be consistent
+- [x] `db/base.py` — declarative `Base`, naming convention for constraints and indexes
+- [x] `db/session.py` — engine, `sessionmaker`, `get_session` dependency, context manager for the worker
+- [x] Shared mixins: `TimestampMixin` (`created_at`, `updated_at`), UUID primary key default
+- [x] Enum types defined once in Python and mapped to native Postgres enums or constrained varchars — pick one and be consistent
 
 ### Identity tables
 
-- [ ] `users` — `id`, `email` (unique, citext or lower-indexed), `password_hash`, `full_name`, `role`, `is_active`, `created_at`, `updated_at`
-- [ ] `role` constrained to `analyst` | `admin`
-- [ ] `refresh_tokens` — `id`, `user_id` FK, `token_hash`, `expires_at`, `revoked_at`, `created_at`
-- [ ] Index `refresh_tokens(user_id)`, index `refresh_tokens(token_hash)` unique
+- [x] `users` — `id`, `email` (unique, citext or lower-indexed), `password_hash`, `full_name`, `role`, `is_active`, `created_at`, `updated_at`
+- [x] `role` constrained to `analyst` | `admin`
+- [x] `refresh_tokens` — `id`, `user_id` FK, `token_hash`, `expires_at`, `revoked_at`, `created_at`
+- [x] Index `refresh_tokens(user_id)`, index `refresh_tokens(token_hash)` unique
 
 ### Master data tables
 
-- [ ] `providers` — `provider_id` (business key, unique), `npi`, `first_name`, `middle_name`, `last_name`, `suffix`, `dob`, `address_line1`, `address_line2`, `city`, `state`, `zip`, `license_number`, `license_state`, `specialty`, `organization_name`, `is_organization`, `status`, `created_at`
-- [ ] `providers` normalized columns persisted: `name_norm`, `name_sorted_norm`, `name_phonetic`, `addr_norm`, `zip5`
-- [ ] `sanction_files` — `id`, `filename`, `storage_uri`, `sha256` (unique), `uploaded_by` FK, `row_count`, `uploaded_at`, `mapping_id` FK, `status`
-- [ ] `sanction_files.status` constrained to `INSPECTED` | `COMMITTED` | `REJECTED` — two-phase upload (Q1) ⭐
-- [ ] `column_mappings` — `id`, `source_authority`, `name`, `mapping` JSONB, `is_default`, `created_by` FK, `created_at` (Q1) ⭐
-- [ ] Unique index `column_mappings(source_authority, name)`
-- [ ] Canonical field set defined once in code and documented — the mapping target vocabulary
-- [ ] `sanction_records` — `id`, `file_id` FK, `raw` JSONB, extracted fields mirroring `providers`, `sanction_type`, `exclusion_date`, `reinstatement_date`, `source_authority`
-- [ ] `sanction_records` normalized columns: same five as `providers`
-- [ ] `raw` JSONB preserves the original row verbatim — required for audit defensibility
+- [x] `providers` — `provider_id` (business key, unique), `npi`, `first_name`, `middle_name`, `last_name`, `suffix`, `dob`, `address_line1`, `address_line2`, `city`, `state`, `zip`, `license_number`, `license_state`, `specialty`, `organization_name`, `is_organization`, `status`, `created_at`
+- [x] `providers` normalized columns persisted: `name_norm`, `name_sorted_norm`, `name_phonetic`, `addr_norm`, `zip5`
+- [x] `sanction_files` — `id`, `filename`, `storage_uri`, `sha256` (unique), `uploaded_by` FK, `row_count`, `uploaded_at`, `mapping_id` FK, `status`
+- [x] `sanction_files.status` constrained to `INSPECTED` | `COMMITTED` | `REJECTED` — two-phase upload (Q1) ⭐
+- [x] `column_mappings` — `id`, `source_authority`, `name`, `mapping` JSONB, `is_default`, `created_by` FK, `created_at` (Q1) ⭐
+- [x] Unique index `column_mappings(source_authority, name)`
+- [x] Canonical field set defined once in code and documented — the mapping target vocabulary
+- [x] `sanction_records` — `id`, `file_id` FK, `raw` JSONB, extracted fields mirroring `providers`, `sanction_type`, `exclusion_date`, `reinstatement_date`, `source_authority`
+- [x] `sanction_records` normalized columns: same five as `providers`
+- [x] `raw` JSONB preserves the original row verbatim — required for audit defensibility
 
 ### Matching tables
 
-- [ ] `reconciliation_runs` — `id`, `triggered_by` FK, `file_id` FK, `status`, `started_at`, `finished_at`, `engine_version`, `scoring_config_id` FK, `prompt_version`, `provider_snapshot_hash`, `sanction_snapshot_hash`, counts by outcome, `llm_calls`, `llm_tokens`, `llm_cost_usd`
-- [ ] `status` constrained to `QUEUED` | `RUNNING` | `COMPLETED` | `FAILED` | `CANCELLED`
-- [ ] `scoring_configs` — `id`, `version`, `params` JSONB (m/u tables, λ), `t_auto_accept`, `t_auto_reject`, `calibrator` JSONB, `fitted_at`, `fitted_from`, `notes`
-- [ ] `fitted_from` constrained to `em` | `supervised` | `manual`
-- [ ] `scoring_configs.version` unique; rows are immutable once written
-- [ ] `match_results` — `id`, `run_id` FK, `sanction_record_id` FK, `decision`, `chosen_provider_id` FK nullable, `posterior`, `calibrated_confidence`, `raw_match_weight`, `route`, `llm_call_id` FK nullable, `explanation`, `review_status`, `reviewed_by` FK nullable, `reviewed_at`, `reviewer_comment`
-- [ ] `decision` constrained to `MATCH` | `AMBIGUOUS` | `NO_MATCH`
-- [ ] `route` constrained to `deterministic` | `probabilistic` | `llm`
-- [ ] `review_status` constrained to `PENDING` | `APPROVED` | `REJECTED` | `ESCALATED`
-- [ ] Unique constraint on `match_results(run_id, sanction_record_id)`
-- [ ] `match_results.superseded_by` FK (self-referential, nullable) and `superseded_at` (Q5) ⭐
-- [ ] Partial index on `match_results` where `superseded_by IS NULL` — the default query path
-- [ ] Repository list methods exclude superseded rows unless explicitly asked for history ⭐
-- [ ] `match_candidates` — `id`, `match_result_id` FK, `provider_id` FK, `rank`, `field_levels` JSONB, `field_weights` JSONB, `match_weight`, `posterior`
-- [ ] `field_weights` stores each field's contribution to the total — the Investigation UI renders it directly
-- [ ] `llm_calls` — `id`, `cache_key` (unique), `provider`, `model`, `prompt_version`, `request` JSONB, `response` JSONB, `latency_ms`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `created_at`
+- [x] `reconciliation_runs` — `id`, `triggered_by` FK, `file_id` FK, `status`, `started_at`, `finished_at`, `engine_version`, `scoring_config_id` FK, `prompt_version`, `provider_snapshot_hash`, `sanction_snapshot_hash`, counts by outcome, `llm_calls`, `llm_tokens`, `llm_cost_usd`
+- [x] `status` constrained to `QUEUED` | `RUNNING` | `COMPLETED` | `FAILED` | `CANCELLED`
+- [x] `scoring_configs` — `id`, `version`, `params` JSONB (m/u tables, λ), `t_auto_accept`, `t_auto_reject`, `calibrator` JSONB, `fitted_at`, `fitted_from`, `notes`
+- [x] `fitted_from` constrained to `em` | `supervised` | `manual`
+- [x] `scoring_configs.version` unique; rows are immutable once written
+- [x] `match_results` — `id`, `run_id` FK, `sanction_record_id` FK, `decision`, `chosen_provider_id` FK nullable, `posterior`, `calibrated_confidence`, `raw_match_weight`, `route`, `llm_call_id` FK nullable, `explanation`, `review_status`, `reviewed_by` FK nullable, `reviewed_at`, `reviewer_comment`
+- [x] `decision` constrained to `MATCH` | `AMBIGUOUS` | `NO_MATCH`
+- [x] `route` constrained to `deterministic` | `probabilistic` | `llm`
+- [x] `review_status` constrained to `PENDING` | `APPROVED` | `REJECTED` | `ESCALATED`
+- [x] Unique constraint on `match_results(run_id, sanction_record_id)`
+- [x] `match_results.superseded_by` FK (self-referential, nullable) and `superseded_at` (Q5) ⭐
+- [x] Partial index on `match_results` where `superseded_by IS NULL` — the default query path
+- [x] Repository list methods exclude superseded rows unless explicitly asked for history ⭐
+- [x] `match_candidates` — `id`, `match_result_id` FK, `provider_id` FK, `rank`, `field_levels` JSONB, `field_weights` JSONB, `match_weight`, `posterior`
+- [x] `field_weights` stores each field's contribution to the total — the Investigation UI renders it directly
+- [x] `llm_calls` — `id`, `cache_key` (unique), `provider`, `model`, `prompt_version`, `request` JSONB, `response` JSONB, `latency_ms`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `created_at`
 
 ### Workflow tables
 
-- [ ] `cases` — `id`, `case_number` (unique, human-readable), `provider_id` FK, `sanction_record_id` FK, `match_result_id` FK, `status`, `start_date`, `end_date`, `duration_months` default 3, `created_by` FK, `closed_by` FK nullable, `close_reason`
-- [ ] `status` constrained to `ACTIVE` | `EXPIRED` | `CLOSED` | `REJECTED`
-- [ ] Unique partial index preventing two `ACTIVE` cases for the same `(provider_id, sanction_record_id)`
-- [ ] `cases.conflict_flag` boolean and `cases.conflict_match_result_id` FK nullable (Q5) ⭐
-- [ ] Index `cases(conflict_flag)` where true — drives the conflict surface in the queue
-- [ ] `audit_logs` — `id`, `actor_user_id` FK nullable, `actor_role`, `action`, `entity_type`, `entity_id`, `before` JSONB, `after` JSONB, `request_id`, `ip`, `created_at`
-- [ ] Migration revokes `UPDATE` and `DELETE` on `audit_logs` from the application role ⭐
-- [ ] Verify the revoke actually bites — write a test that attempts an update and expects a permission error
+- [x] `cases` — `id`, `case_number` (unique, human-readable), `provider_id` FK, `sanction_record_id` FK, `match_result_id` FK, `status`, `start_date`, `end_date`, `duration_months` default 3, `created_by` FK, `closed_by` FK nullable, `close_reason`
+- [x] `status` constrained to `ACTIVE` | `EXPIRED` | `CLOSED` | `REJECTED`
+- [x] Unique partial index preventing two `ACTIVE` cases for the same `(provider_id, sanction_record_id)`
+- [x] `cases.conflict_flag` boolean and `cases.conflict_match_result_id` FK nullable (Q5) ⭐
+- [x] Index `cases(conflict_flag)` where true — drives the conflict surface in the queue
+- [x] `audit_logs` — `id`, `actor_user_id` FK nullable, `actor_role`, `action`, `entity_type`, `entity_id`, `before` JSONB, `after` JSONB, `request_id`, `ip`, `created_at`
+- [x] Migration revokes `UPDATE` and `DELETE` on `audit_logs` from the application role ⭐
+- [x] Verify the revoke actually bites — write a test that attempts an update and expects a permission error
 
 ### Evaluation & learning tables
 
-- [ ] `ground_truth` — `sanction_record_id` FK, `expected_provider_id` FK nullable, `expected_outcome`, `corruption_profile` JSONB, `scenario_tag`
-- [ ] `expected_outcome` constrained to `MATCH` | `NO_MATCH` | `AMBIGUOUS`
-- [ ] `eval_runs` — `id`, `run_id` FK nullable, `corruption_level`, `strategy`, `precision`, `recall`, `f1`, `false_positives`, `false_negatives`, `brier`, `ece`, `reliability_bins` JSONB, `blocking_recall`, `created_at`
-- [ ] `strategy` constrained to `deterministic` | `fuzzy` | `probabilistic` | `probabilistic_llm`
-- [ ] `feedback_events` — `id`, `match_result_id` FK, `reviewer_id` FK, `label`, `comparison_vector` JSONB, `created_at`
-- [ ] `label` constrained to `TRUE_MATCH` | `FALSE_MATCH`
+- [x] `ground_truth` — `sanction_record_id` FK, `expected_provider_id` FK nullable, `expected_outcome`, `corruption_profile` JSONB, `scenario_tag`
+- [x] `expected_outcome` constrained to `MATCH` | `NO_MATCH` | `AMBIGUOUS`
+- [x] `eval_runs` — `id`, `run_id` FK nullable, `corruption_level`, `strategy`, `precision`, `recall`, `f1`, `false_positives`, `false_negatives`, `brier`, `ece`, `reliability_bins` JSONB, `blocking_recall`, `created_at`
+- [x] `strategy` constrained to `deterministic` | `fuzzy` | `probabilistic` | `probabilistic_llm`
+- [x] `feedback_events` — `id`, `match_result_id` FK, `reviewer_id` FK, `label`, `comparison_vector` JSONB, `created_at`
+- [x] `label` constrained to `TRUE_MATCH` | `FALSE_MATCH`
 
 ### Jobs table
 
-- [ ] `jobs` — `id`, `kind`, `payload` JSONB, `status`, `attempts`, `max_attempts`, `locked_at`, `locked_by`, `run_after`, `last_error`, `created_at`, `updated_at`
-- [ ] `status` constrained to `PENDING` | `RUNNING` | `DONE` | `FAILED` | `DEAD`
+- [x] `jobs` — `id`, `kind`, `payload` JSONB, `status`, `attempts`, `max_attempts`, `locked_at`, `locked_by`, `run_after`, `last_error`, `created_at`, `updated_at`
+- [x] `status` constrained to `PENDING` | `RUNNING` | `DONE` | `FAILED` | `DEAD`
 
 ### Indexes
 
-- [ ] `providers(npi)`
-- [ ] `providers(name_norm)`
-- [ ] `providers(state, dob)`
-- [ ] `providers(name_phonetic, state)`
-- [ ] `providers(license_number, license_state)`
-- [ ] GIN trigram index on `providers(name_norm)` ⭐
-- [ ] `providers(zip5, last_name)` supporting the zip block
-- [ ] Mirror the equivalent indexes on `sanction_records`
-- [ ] `match_results(run_id, review_status)`
-- [ ] `match_results(sanction_record_id)`
-- [ ] `match_candidates(match_result_id, rank)`
-- [ ] `audit_logs(entity_type, entity_id)`
-- [ ] `audit_logs(created_at DESC)`
-- [ ] `jobs(status, run_after)`
-- [ ] `llm_calls(cache_key)` unique
-- [ ] `cases(status, end_date)` supporting the expiry job
+- [x] `providers(npi)`
+- [x] `providers(name_norm)`
+- [x] `providers(state, dob)`
+- [x] `providers(name_phonetic, state)`
+- [x] `providers(license_number, license_state)`
+- [x] GIN trigram index on `providers(name_norm)` ⭐
+- [x] `providers(zip5, last_name)` supporting the zip block
+- [x] Mirror the equivalent indexes on `sanction_records`
+- [x] `match_results(run_id, review_status)`
+- [x] `match_results(sanction_record_id)`
+- [x] `match_candidates(match_result_id, rank)`
+- [x] `audit_logs(entity_type, entity_id)`
+- [x] `audit_logs(created_at DESC)`
+- [x] `jobs(status, run_after)`
+- [x] `llm_calls(cache_key)` unique
+- [x] `cases(status, end_date)` supporting the expiry job
 
 ### Repository layer
 
-- [ ] One repository module per aggregate: providers, sanctions, matches, cases, audit, users, jobs, eval
-- [ ] Repositories accept a `Session`; they never open their own
-- [ ] No raw SQL outside repositories and the assistant module
-- [ ] Pagination helper shared across list repositories (limit/offset + total count)
+- [x] One repository module per aggregate: providers, sanctions, matches, cases, audit, users, jobs, eval
+- [x] Repositories accept a `Session`; they never open their own
+- [x] No raw SQL outside repositories and the assistant module
+- [x] Pagination helper shared across list repositories (limit/offset + total count)
 
 ### Second implementations of the Stage 0 protocols ⭐
 
-- [ ] `PostgresRecordStore` implementing `RecordStore` ⭐
-- [ ] `PostgresRecordStore.snapshot_hash()` produces the **same hash** as `ParquetRecordStore` for the same data ⭐
-- [ ] `SqlCandidateGenerator` implementing `CandidateGenerator` — each block a single indexed query ⭐
-- [ ] `EXPLAIN` confirms every block uses an index; no sequential scans
-- [ ] Blocking batched — no 5,000 round trips
-- [ ] `PostgresCache` implementing `ResponseCache`, backed by `llm_calls` ⭐
-- [ ] Migration importing the existing `FileCache` entries into `llm_calls` — Stage 4's work is not thrown away ⭐
-- [ ] **Nothing in `matching/` changed to make this work** — verify by diff ⭐
+- [x] `PostgresRecordStore` implementing `RecordStore` ⭐
+- [x] `PostgresRecordStore.snapshot_hash()` produces the **same hash** as `ParquetRecordStore` for the same data ⭐ — providers and sanctions both. Required adding `sanction_records.dob_raw`: the typed `DATE` column silently parsed away the corruption engine's malformed dates (`08-24-57`, `May 26, 1985`), NULLing 172 rows and changing what the matcher would see
+- [x] `SqlCandidateGenerator` implementing `CandidateGenerator` — each block a single indexed query ⭐
+- [x] `EXPLAIN` confirms every block uses an index; no sequential scans — exact blocks take `Index Scan using ix_provider_block_keys_block_key`, the fuzzy block takes `Bitmap Index Scan on ix_providers_trigram_key_gin`
+- [x] Blocking batched — no 5,000 round trips. This was ticked before it was true: the generator issued two queries per record and the scorer one per candidate. `candidates_batch()` now answers a whole chunk in two queries and `normalized_providers()` fetches every candidate's normalized form in one — 300 records went from 168s to 11.7s
+- [x] `PostgresCache` implementing `ResponseCache`, backed by `llm_calls` ⭐
+- [x] Migration importing the existing `FileCache` entries into `llm_calls` — Stage 4's work is not thrown away ⭐ — `concordance db import-cache` run against the live database: 16 entries imported, 0 failed, both providers represented, and `PostgresCache.get()` returns them
+- [x] **Nothing in `matching/` changed to make this work** — verify by diff ⭐
 
 ### Loader
 
-- [ ] `concordance db load --from data/generated/` imports the Parquet dataset ⭐
-- [ ] Bulk insert via `COPY`, not row-by-row ORM inserts
-- [ ] Normalized columns populated at load time using the Stage 2 functions — one implementation, not two ⭐
-- [ ] Ground truth loaded alongside
-- [ ] Load of 50k providers + 5k sanctions completes in a sane time — record it
-- [ ] `concordance db reset` drops and recreates, prompting for confirmation
+- [x] `concordance db load --from data/generated/` imports the Parquet dataset ⭐
+- [x] Bulk insert via `COPY`, not row-by-row ORM inserts
+- [x] Normalized columns populated at load time using the Stage 2 functions — one implementation, not two ⭐
+- [x] Ground truth loaded alongside
+- [x] Load of 50k providers + 5k sanctions completes in a sane time — **43.3s** for 50,000 providers, 338,524 block keys, 5,000 sanctions and 5,000 ground-truth rows (providers 34.6s, sanctions 1.9s, ground truth 1.3s). That is across a WAN link to a hosted database, not local disk; a local container will be faster, not slower
+- [x] `concordance db reset` drops and recreates, prompting for confirmation
 
 ### Documentation
 
-- [ ] `docs/data_dictionary.md` covering **every column**: name, type, nullable, default, meaning
-- [ ] Document all valid NPI sentinel values and placeholder strings
-- [ ] Document every enum and its allowed values
-- [ ] Document which columns are derived/normalized and by which function
+- [x] `docs/data_dictionary.md` covering **every column**: name, type, nullable, default, meaning
+- [x] Document all valid NPI sentinel values and placeholder strings
+- [x] Document every enum and its allowed values
+- [x] Document which columns are derived/normalized and by which function
 
 ### GATE 5
-- [ ] `alembic upgrade head` runs clean on an empty database
-- [ ] `alembic downgrade base` runs clean with no orphaned objects
-- [ ] `alembic revision --autogenerate` afterwards produces an empty diff
-- [ ] Loader imports the full Parquet dataset without error
-- [ ] **`SqlCandidateGenerator` and `InMemoryCandidateGenerator` return identical candidate sets on the same fixture** ⭐
-- [ ] `PostgresRecordStore.snapshot_hash()` equals `ParquetRecordStore.snapshot_hash()` on the same data ⭐
-- [ ] An evaluation run against Postgres reproduces the Stage 3 metrics exactly ⭐
-- [ ] `git diff` shows no changes to `matching/` in this stage ⭐
-- [ ] Test proving `UPDATE audit_logs` is rejected for the app role
-- [ ] `docs/data_dictionary.md` covers every column in every table — verified by reading the migration alongside it
+- [x] `alembic upgrade head` runs clean on an empty database
+- [x] `alembic downgrade base` runs clean with no orphaned objects — only `alembic_version` survives, which is Alembic's own bookkeeping; no orphaned enums, indexes or sequences
+- [x] `alembic revision --autogenerate` afterwards produces an empty diff — verified again after the `dob_raw` addition
+- [x] Loader imports the full Parquet dataset without error — after fixing a flush-ordering bug that wrote `provider_block_keys` ahead of the providers they reference, which failed on the first batch with a foreign-key violation
+- [x] **`SqlCandidateGenerator` and `InMemoryCandidateGenerator` return identical candidate sets on the same fixture** ⭐ — identical membership *and* order on 300 of 300 sampled records at full dataset size, and on all 5,000 records in the evaluation run below. This failed at first (85 of 300 disagreed): `TrigramIndex.max_posting` skipped long posting lists and `pg_trgm` has no equivalent cut-off. The guard is now configurable and defaults to off, and only off preserves parity
+- [x] `PostgresRecordStore.snapshot_hash()` equals `ParquetRecordStore.snapshot_hash()` on the same data ⭐
+- [x] An evaluation run against Postgres reproduces the Stage 3 metrics exactly ⭐ — 5,000 records, same fitted config on both sides, **3,458 leaf values of the evaluation report compared and every one identical**; candidate lists identical for all 5,000 records. Only `latency_ms.*` differs, which is the network. Reaching it required the batched path below: per-record blocking plus one provider lookup per candidate is ~47 round trips per record, which over a WAN link is roughly 18 hours for a run that now takes 128 seconds
+- [ ] `git diff` shows no changes to `matching/` in this stage ⭐ — **one deliberate exception, and it is not the seam leaking.** `TrigramIndex.max_posting` changed from `2_000` to `None`. The heuristic had no `pg_trgm` counterpart, so it made the two implementations answer differently; keeping it would have meant retiring the equivalence claim instead. No blocking rule, comparator, weight or threshold changed. Cost: about 25 seconds across a 5,000-record run
+- [x] Test proving `UPDATE audit_logs` is rejected for the app role — `tests/integration/test_audit_immutability.py`, five tests: the app role is not the table owner (otherwise the rest passes for the wrong reason), it can still append, `UPDATE` and `DELETE` are both refused with `permission denied`, and the row is intact afterwards
+- [x] `docs/data_dictionary.md` covers every column in every table — enforced by `tests/unit/test_db_schema.py`, which caught `dob_raw` before a human would have
 
 ---
-
 ## Stage 6 — Orchestration, runs, replay ⭐ · ~8h
 
 ### Job queue

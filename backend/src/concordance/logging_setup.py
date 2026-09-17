@@ -75,22 +75,32 @@ class Progress:
     and from CI, where a redrawn bar is noise. One line every ``every`` items.
     """
 
-    def __init__(self, label: str, total: int | None = None, every: int = 10_000) -> None:
+    def __init__(
+        self,
+        label: str,
+        total: int | None = None,
+        every: int = 10_000,
+        enabled: bool = True,
+    ) -> None:
         self.label = label
         self.total = total
         self.every = max(1, every)
+        # A sweep runs ten of these at once in worker processes; interleaved
+        # progress from all of them is worse than none.
+        self.enabled = enabled
         self.count = 0
         self._log = get_logger("progress")
         self._start = 0.0
 
     def __enter__(self) -> Progress:
         self._start = time.perf_counter()
-        self._log.info("start", op=self.label, total=self.total)
+        if self.enabled:
+            self._log.info("start", op=self.label, total=self.total)
         return self
 
     def tick(self, n: int = 1) -> None:
         self.count += n
-        if self.count % self.every < n:
+        if self.enabled and self.count % self.every < n:
             self._log.info(
                 "progress",
                 op=self.label,
@@ -105,6 +115,8 @@ class Progress:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        if not self.enabled and exc is None:
+            return
         self._log.info(
             "done" if exc is None else "failed",
             op=self.label,

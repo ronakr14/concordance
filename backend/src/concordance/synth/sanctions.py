@@ -26,18 +26,24 @@ from concordance.synth.rng import choice, stream
 
 # Scenario name -> (share of the file, expected outcome). Shares sum to 1.0.
 SCENARIOS: dict[str, tuple[float, Outcome]] = {
-    "exact_npi": (0.16, Outcome.MATCH),
+    "exact_npi": (0.14, Outcome.MATCH),
     "missing_npi": (0.14, Outcome.MATCH),
     "sentinel_npi": (0.08, Outcome.MATCH),
     "name_variation": (0.14, Outcome.MATCH),
     "address_variation": (0.10, Outcome.MATCH),
     "ambiguous": (0.08, Outcome.AMBIGUOUS),
-    "false_positive_bait": (0.08, Outcome.NO_MATCH),
-    "unmatched": (0.08, Outcome.NO_MATCH),
+    "false_positive_bait": (0.06, Outcome.NO_MATCH),
+    "unmatched": (0.05, Outcome.NO_MATCH),
     "org_exact": (0.05, Outcome.MATCH),
     "org_acronym": (0.04, Outcome.MATCH),
     "org_dba": (0.03, Outcome.MATCH),
     "org_type_disagreement": (0.02, Outcome.MATCH),
+    # The organization model needs negatives of its own. Without them every
+    # organization record has a true provider, organization precision is flat
+    # across the whole confidence range and the accept threshold is not
+    # identifiable from the data - see docs/matching_engine.md section 6.
+    "org_unmatched": (0.04, Outcome.NO_MATCH),
+    "org_false_positive_bait": (0.03, Outcome.NO_MATCH),
 }
 
 IDENTITY_FIELDS = (
@@ -90,17 +96,30 @@ class SanctionGenerator:
         self.phantoms = EntityFactory(seed ^ 0x5EED, self.ref)
         self.used_npis = {e["npi"] for e in entities if e.get("npi")}
 
+        self.weak_ambiguous = False
         self.individuals = [e for e in entities if not e["is_organization"]]
         self.orgs = [e for e in entities if e["is_organization"]]
         self.by_cluster: dict[str, list[dict[str, Any]]] = {}
         for e in entities:
             if e.get("_cluster"):
                 self.by_cluster.setdefault(e["_cluster"], []).append(e)
+        # `common_name` only, deliberately. Twin clusters differ by given name,
+        # so a record drawn from one is decidable the moment the given name
+        # survives - the engine picks the right twin and is scored wrong for it.
+        # A `common_name` cluster shares first name, last name and state, and
+        # differs only in the fields this scenario strips, so no evidence in the
+        # record can separate its members and AMBIGUOUS is the correct answer.
         self.ambiguous_clusters = [
             members
             for cid, members in self.by_cluster.items()
-            if len(members) > 1 and ("twins" in cid or "common_name" in cid)
+            if len(members) > 1 and "common_name" in cid
         ]
+        if not self.ambiguous_clusters:
+            # Only reachable on a dataset too small to plant one. Falling back
+            # to any multi-member cluster keeps the scenario populated; the
+            # records it yields are weaker, so say so rather than hide it.
+            self.ambiguous_clusters = [m for m in self.by_cluster.values() if len(m) > 1]
+            self.weak_ambiguous = bool(self.ambiguous_clusters)
         self.acronym_clusters = [m for cid, m in self.by_cluster.items() if "acronym" in cid]
         self.dba_clusters = [m for cid, m in self.by_cluster.items() if "dba" in cid]
 
@@ -125,14 +144,41 @@ class SanctionGenerator:
 
         if scenario == "unmatched":
             # Nobody in the master. A valid-looking record with no counterpart.
-            phantom = (
-                self.phantoms.organization()
-                if self.r_pick.random() < 0.15
-                else self.phantoms.individual()
-            )
-            phantom["npi"] = self._fresh_npi(bool(phantom["is_organization"]))
+            # Individual-only: organizations have `org_unmatched`, so that the
+            # two models each own their negatives and the per-model counts stay
+            # legible in the evaluation breakdown.
+            phantom = self.phantoms.individual()
+            phantom["npi"] = self._fresh_npi(False)
             truth["expected_provider_id"] = None
             return self._view(phantom), truth
+
+        if scenario == "org_unmatched":
+            # The organization counterpart of `unmatched`: an easy negative,
+            # which is what makes the reject cut identifiable.
+            phantom = self.phantoms.organization()
+            phantom["npi"] = self._fresh_npi(True)
+            truth["expected_provider_id"] = None
+            return self._view(phantom), truth
+
+        if scenario == "org_false_positive_bait":
+            # The organization counterpart of `false_positive_bait`, and the
+            # hard negative of the pair: same legal name and state as a real
+            # organization, but a different entity - different EIN, different
+            # type-2 NPI, another city. A branch of the same group would look
+            # like this too, which is the point: the EIN is what settles it,
+            # and the accept cut has to sit above this kind of evidence.
+            anchor = self._pick(self.orgs)
+            bait = self.phantoms.organization(
+                organization_name=anchor["organization_name"],
+                dba_name=anchor.get("dba_name"),
+            )
+            # A whole address, not a state override: overriding `state` alone
+            # would leave the city and ZIP from some other state behind.
+            bait.update(self.phantoms.address(state=anchor["state"]))
+            bait["npi"] = self._fresh_npi(True)
+            truth["expected_provider_id"] = None
+            truth["near_provider_id"] = anchor["provider_id"]
+            return self._view(bait), truth
 
         if scenario == "false_positive_bait":
             # Close enough to be tempting: same name and state as a real
@@ -164,11 +210,23 @@ class SanctionGenerator:
             ]
             anchor = members[0]
             view = self._view(anchor)
-            # Strip what would disambiguate: no NPI, no DOB, no street address.
-            view["npi"] = None
-            view["dob"] = None
-            view["address_line1"] = None
-            view["address_line2"] = None
+            # Strip every field that differs inside a `common_name` cluster.
+            # The members share first name, last name, city, state and ZIP;
+            # they each have their own NPI, date of birth, street address and
+            # licence, so all four have to go or the record resolves to exactly
+            # one of them. City, state and ZIP survive because they are shared
+            # by every member - they cannot separate the cluster, and they are
+            # what keeps the record inside the ZIP-and-name blocking key rather
+            # than adrift among every same-named provider in the state.
+            for field_name in (
+                "npi",
+                "dob",
+                "address_line1",
+                "address_line2",
+                "license_number",
+                "license_state",
+            ):
+                view[field_name] = None
             truth["expected_provider_id"] = anchor["provider_id"]
             truth["plausible_provider_ids"] = [m["provider_id"] for m in members]
             truth["cluster"] = anchor["_cluster"]

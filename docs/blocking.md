@@ -78,9 +78,15 @@ Each block is an exact lookup into an inverted index, except the last.
 
 It is the expensive block and the one that over-returns, so it only fills the space the
 exact blocks left: if the cap is 50 and the exact blocks already proposed 44, the trigram
-query asks for at most 6 more. At query time any trigram whose posting list is longer than
-`max_posting` (2,000) is skipped entirely — a trigram shared by a large share of the file
-carries no information and would swamp the cap with noise.
+query asks for at most 6 more.
+
+`TrigramIndex.max_posting` can skip any trigram whose posting list is longer than a given
+length — a trigram shared by a large share of the file carries little information and can
+swamp the cap with noise. **It defaults to off, and only off keeps the in-memory and SQL
+generators equivalent.** `pg_trgm` has no matching cut-off, so with the guard set to 2,000
+the two generators disagreed on 85 of 300 records at 50,000 providers; with it off, 120 of
+120 agree on both membership and order. The guard buys about 25 seconds across a
+5,000-record run, which is not worth two implementations that return different answers.
 
 ### Determinism
 

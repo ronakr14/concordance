@@ -24,7 +24,11 @@ from concordance.synth.excel import write_sanction_workbooks
 from concordance.synth.reference import load_reference, reference_fingerprint
 from concordance.synth.sanctions import SCENARIOS, SanctionGenerator
 
-GENERATOR_VERSION = "1.0.0"
+# Bump whenever a change alters what the generator emits for a given seed.
+# Anything that caches a generated dataset compares this against the manifest
+# and regenerates on a mismatch, so a stale dataset cannot quietly survive a
+# generator change and be measured as though it were current.
+GENERATOR_VERSION = "1.1.0"
 
 log = get_logger("synth")
 

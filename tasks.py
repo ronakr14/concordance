@@ -90,15 +90,40 @@ def blocking_recall(args: list[str]) -> int:
 
 
 def fit(args: list[str]) -> int:
-    return _run(PY, "-m", "concordance.cli", "match", "fit")
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "match", "fit"]
+    if "CORRUPTION" in v:
+        argv += ["--corruption", v["CORRUPTION"]]
+    if "SEED" in v:
+        argv += ["--seed", v["SEED"]]
+    return _run(*argv)
 
 
 def evaluate(args: list[str]) -> int:
-    return _run(PY, "-m", "concordance.cli", "report", "eval")
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "report", "eval"]
+    argv += ["--strategy", v.get("STRATEGY", "probabilistic")]
+    if "CORRUPTION" in v:
+        argv += ["--corruption", v["CORRUPTION"]]
+    if "SEED" in v:
+        argv += ["--seed", v["SEED"]]
+    return _run(*argv)
 
 
 def sweep(args: list[str]) -> int:
-    return _run(PY, "-m", "concordance.cli", "report", "sweep")
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "match", "sweep"]
+    for key, flag in (
+        ("LEVELS", "--levels"),
+        ("STRATEGIES", "--strategies"),
+        ("WORKERS", "--workers"),
+        ("PROVIDERS", "--providers"),
+        ("SANCTIONS", "--sanctions"),
+        ("SEED", "--seed"),
+    ):
+        if key in v:
+            argv += [flag, v[key]]
+    return _run(*argv)
 
 
 def test(args: list[str]) -> int:

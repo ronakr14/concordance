@@ -250,7 +250,12 @@ def test_scenarios_hold_their_defining_property() -> None:
             assert rec["npi"] is None
         elif tag == "sentinel_npi":
             assert is_placeholder(rec["npi"])
-        elif tag in {"unmatched", "false_positive_bait"}:
+        elif tag in {
+            "unmatched",
+            "false_positive_bait",
+            "org_unmatched",
+            "org_false_positive_bait",
+        }:
             assert truth["expected_outcome"] == "NO_MATCH"
             assert truth["expected_provider_id"] is None
         elif tag == "ambiguous":
@@ -259,6 +264,80 @@ def test_scenarios_hold_their_defining_property() -> None:
         elif tag == "org_type_disagreement":
             provider = providers[truth["expected_provider_id"]]
             assert provider["is_organization"] and not rec["is_organization"]
+
+
+@pytest.mark.unit
+def test_ambiguous_records_keep_nothing_that_separates_their_cluster() -> None:
+    """The whole point of the scenario: no field in the record may decide it.
+
+    A `common_name` cluster shares first name, last name and state and differs
+    in everything else, so every differing field has to be absent or the record
+    resolves to one member and AMBIGUOUS becomes the wrong answer.
+    """
+    entities = generate_entities(2000, seed=21)
+    build = SanctionGenerator(entities, corruption=0.5, seed=21).build(600)
+    by_id = {r["record_id"]: r for r in build.records}
+    providers = {e["provider_id"]: e for e in entities}
+
+    seen = 0
+    for truth in build.truth:
+        if truth["scenario_tag"] != "ambiguous":
+            continue
+        seen += 1
+        rec = by_id[truth["sanction_record_id"]]
+        for field in ("dob", "address_line1", "license_number"):
+            # Blank rather than `is None`: the corruption engine can render a
+            # stripped field as an empty string, which normalization reads as
+            # missing just the same.
+            assert not rec[field], f"{field} survived into an ambiguous record"
+        # A placeholder NPI is allowed and realistic - a real file writes "N/A"
+        # rather than leaving the column empty - because the NPI validator
+        # classifies it as missing rather than as a value to match on.
+        assert not rec["npi"] or is_placeholder(rec["npi"])
+        plausible = truth["corruption_profile"]["plausible_provider_ids"]
+        assert len(plausible) > 1
+        assert truth["corruption_profile"]["cluster"].endswith("common_name")
+        # Every plausible provider is equally consistent with what is left.
+        # Everything the record still carries is shared by every member, so
+        # none of it can separate them.
+        for shared in ("first_name", "last_name", "city", "state", "zip"):
+            assert len({providers[pid][shared] for pid in plausible}) == 1, shared
+    assert seen, "no ambiguous records were generated"
+
+
+@pytest.mark.unit
+def test_organizations_have_negatives_of_their_own() -> None:
+    """Without these the organization accept threshold is not identifiable."""
+    entities = generate_entities(2000, seed=22)
+    build = SanctionGenerator(entities, corruption=0.5, seed=22).build(600)
+    by_id = {r["record_id"]: r for r in build.records}
+    known_npis = {e["npi"] for e in entities}
+    known_eins = {e["ein"] for e in entities if e.get("ein")}
+
+    negatives = 0
+    for truth in build.truth:
+        tag = truth["scenario_tag"]
+        if tag not in {"org_unmatched", "org_false_positive_bait"}:
+            continue
+        negatives += 1
+        rec = by_id[truth["sanction_record_id"]]
+        assert truth["expected_provider_id"] is None
+        assert rec["is_organization"] is True
+        if rec["npi"]:
+            assert rec["npi"] not in known_npis
+        if rec["ein"]:
+            assert rec["ein"] not in known_eins
+    assert negatives, "the organization model needs negatives to learn a cut"
+
+
+@pytest.mark.unit
+def test_individual_unmatched_scenario_is_individual_only() -> None:
+    entities = generate_entities(1500, seed=23)
+    build = SanctionGenerator(entities, corruption=0.4, seed=23).build(400)
+    by_id = {r["record_id"]: r for r in build.records}
+    for truth in build.truth:
+        if truth["scenario_tag"] == "unmatched":
+            assert by_id[truth["sanction_record_id"]]["is_organization"] is False
 
 
 @pytest.mark.unit
