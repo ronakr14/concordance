@@ -44,6 +44,7 @@ model.
 - `docs/CHECKLIST.md` — implementation checklist
 - `docs/matching_engine.md` — the engine: level tables, the EM derivation, the
   guard rails, and why learned weights beat hand-tuned ones
+- `docs/orchestration.md` — runs, the Postgres job queue, replay and diff
 - `docs/blocking.md`, `docs/scenario_catalogue.md` — candidate generation and
   the synthetic dataset
 

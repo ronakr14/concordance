@@ -51,11 +51,35 @@ def get_engine(settings: Settings | None = None, **kwargs: Any) -> Engine:
             "max_overflow": 5,
             "future": True,
             "echo": False,
-            # Without this, a host that accepts the packet but never answers -
-            # a stopped service, a firewalled port - leaves the client waiting
-            # on the OS default, which on Windows is minutes. `db ping` exists
-            # to answer quickly, including when the answer is no.
-            "connect_args": {"connect_timeout": int(resolved.DB_CONNECT_TIMEOUT)},
+            # Small INSERT batches on purpose. SQLAlchemy would otherwise send
+            # one enormous multi-row statement, and a single statement whose
+            # payload is megabytes is the shape that stalls over a slow or
+            # inspected TLS link - the server finishes, the client keeps
+            # waiting, and the run hangs with no error. Smaller statements cost
+            # a few more round trips and never do that.
+            "insertmanyvalues_page_size": int(resolved.DB_INSERT_PAGE_SIZE),
+            # `connect_timeout`: without it, a host that accepts the packet but
+            # never answers - a stopped service, a firewalled port - leaves the
+            # client waiting on the OS default, which on Windows is minutes.
+            # `db ping` exists to answer quickly, including when the answer is
+            # no.
+            #
+            # The keepalives prevent a failure that is otherwise silent: a
+            # hosted provider that drops a connection mid-query leaves the
+            # client blocked on a socket nobody will ever answer, and the run
+            # looks hung rather than failed. With these the OS notices in about
+            # a minute and psycopg raises.
+            "connect_args": {
+                "connect_timeout": int(resolved.DB_CONNECT_TIMEOUT),
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+                # A statement ceiling as well, because keepalives only notice a
+                # socket that has gone quiet, not a server that accepted the
+                # query and stopped answering.
+                "options": f"-c statement_timeout={int(resolved.DB_STATEMENT_TIMEOUT) * 1000}",
+            },
         }
         options.update(kwargs)
         _engine = create_engine(database_url(resolved), **options)

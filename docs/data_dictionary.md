@@ -317,6 +317,8 @@ The provider master. Written only by the loader; read by everything.
 | `engine_version` | `VARCHAR(50)` | yes | — | Version of the matching engine that decided this run. |
 | `scoring_config_id` | `UUID` | yes | — | The fitted config used. Immutable, so the run's provenance stays true. |
 | `prompt_version` | `VARCHAR(50)` | yes | — | Adjudication prompt version, when the LLM was involved. |
+| `strategy` | `VARCHAR(30)` | no | `probabilistic` | Which strategy decided the run. One of ('deterministic', 'fuzzy', 'probabilistic', 'probabilistic_llm'). A replay that had to guess this from the routes it produced would not be a replay. |
+| `request` | `JSONB` | no | `'{}'::jsonb` | The full request the run was started with, including `max_candidates`: blocking with a different cap proposes a different candidate set, so a replay needs it. |
 | `provider_snapshot_hash` | `VARCHAR(64)` | yes | — | Content hash of the provider master as it was read. Half of what makes a run replayable. |
 | `sanction_snapshot_hash` | `VARCHAR(64)` | yes | — | Content hash of the sanction records as they were read. |
 | `records_total` | `INTEGER` | no | `0` | Records the run considered. |

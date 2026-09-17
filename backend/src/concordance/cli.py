@@ -30,12 +30,18 @@ match_app = typer.Typer(help="Normalization, blocking, scoring, calibration.", n
 llm_app = typer.Typer(help="LLM router, cache and grey-band adjudication.", no_args_is_help=True)
 db_app = typer.Typer(help="Database migrations and loaders.", no_args_is_help=True)
 report_app = typer.Typer(help="Evaluation reports and sweeps.", no_args_is_help=True)
+run_app = typer.Typer(
+    help="Reconciliation runs: start, replay, diff, inspect.", no_args_is_help=True
+)
+jobs_app = typer.Typer(help="The job queue and the worker.", no_args_is_help=True)
 
 app.add_typer(data_app, name="data")
 app.add_typer(match_app, name="match")
 app.add_typer(llm_app, name="llm")
 app.add_typer(db_app, name="db")
 app.add_typer(report_app, name="report")
+app.add_typer(run_app, name="run")
+app.add_typer(jobs_app, name="jobs")
 
 log = get_logger("cli")
 
@@ -908,6 +914,238 @@ def report_sweep(
 # --------------------------------------------------------------------------
 # shared helpers
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# Stage 6: runs, replay, diff, the worker
+# --------------------------------------------------------------------------
+
+
+@run_app.command("reconcile")
+def run_reconcile(
+    strategy: Annotated[
+        str,
+        typer.Option(
+            "--strategy", help="deterministic | fuzzy | probabilistic | probabilistic_llm"
+        ),
+    ] = "probabilistic",
+    limit: Annotated[
+        int | None, typer.Option("--limit", help="Score only the first N records.")
+    ] = None,
+    config_version: Annotated[
+        str | None, typer.Option("--config", help="Scoring config version; default is the latest.")
+    ] = None,
+    chunk_size: Annotated[int, typer.Option("--chunk-size")] = 500,
+    max_candidates: Annotated[int | None, typer.Option("--max-candidates")] = None,
+    queue: Annotated[
+        bool, typer.Option("--queue", help="Enqueue for a worker instead of running here.")
+    ] = False,
+    seed: SeedOpt = None,
+) -> None:
+    """Reconcile every sanction record against the provider master, and persist it."""
+    from concordance.db.session import session_scope
+    from concordance.jobs.reconcile import RunRequest, reconcile
+
+    settings, _ = start(seed, echo_config=False)
+    request = RunRequest(
+        strategy=strategy,
+        limit=limit,
+        config_version=config_version,
+        chunk_size=chunk_size,
+        max_candidates=max_candidates,
+        show_progress=True,
+    )
+    if queue:
+        from concordance.jobs.worker import enqueue
+
+        job_id = enqueue("reconcile", request.as_payload(), settings=settings)
+        typer.secho(f"queued job {job_id} - start a worker with 'concordance jobs worker'", fg="green")
+        return
+
+    with session_scope(settings) as session:
+        report = reconcile(session, settings, request)
+    for key, value in report.as_dict().items():
+        if key != "errors":
+            typer.echo(f"{key:<24}{value}")
+    for line in report.errors[:10]:
+        typer.secho(f"  failed: {line}", fg="yellow")
+
+
+@run_app.command("list")
+def run_list(
+    limit: Annotated[int, typer.Option("--limit")] = 10,
+    seed: SeedOpt = None,
+) -> None:
+    """The most recent runs, newest first."""
+    from concordance.db.repositories.matches import MatchRepository
+    from concordance.db.session import session_scope
+
+    settings, _ = start(seed, echo_config=False)
+    with session_scope(settings) as session:
+        page = MatchRepository(session).list_runs(limit=limit)
+        for run in page.items:
+            typer.echo(
+                f"{run.id}  {run.created_at:%Y-%m-%d %H:%M}  {run.status:<10} {run.strategy:<18}"
+                f" records={run.records_total:<6} match={run.matched_count:<6}"
+                f" amb={run.ambiguous_count:<6} none={run.no_match_count:<6}"
+                f" engine={run.engine_version}"
+            )
+        if not page.items:
+            typer.secho("no runs yet - 'concordance run reconcile' makes one.", fg="yellow")
+
+
+@run_app.command("replay")
+def run_replay(
+    run_id: Annotated[str, typer.Argument(help="The run to replay.")],
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Replay even though the data no longer matches the snapshot."),
+    ] = False,
+    seed: SeedOpt = None,
+) -> None:
+    """Re-execute a finished run from its recorded provenance and report any drift."""
+    import uuid as _uuid
+
+    from concordance.db.session import session_scope
+    from concordance.jobs.replay import SnapshotDriftError, replay
+
+    settings, _ = start(seed, echo_config=False)
+    with session_scope(settings) as session:
+        try:
+            report = replay(session, settings, _uuid.UUID(run_id), force=force, show_progress=True)
+        except SnapshotDriftError as exc:
+            typer.secho(str(exc), fg="red")
+            raise typer.Exit(code=2) from exc
+    for line in report.lines():
+        typer.echo(line)
+    if not report.decision_identical:
+        raise typer.Exit(code=1)
+
+
+@run_app.command("diff")
+def run_diff(
+    run_a: Annotated[str, typer.Argument(help="The earlier run.")],
+    run_b: Annotated[str, typer.Argument(help="The later run.")],
+    confidence_delta: Annotated[
+        float, typer.Option("--confidence-delta", help="Report confidence moves above this.")
+    ] = 0.05,
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+    seed: SeedOpt = None,
+) -> None:
+    """What changed between two runs, and the config delta that explains it."""
+    import json
+    import uuid as _uuid
+
+    from concordance.db.session import session_scope
+    from concordance.jobs.diff import diff_runs
+
+    settings, _ = start(seed, echo_config=False)
+    with session_scope(settings) as session:
+        report = diff_runs(
+            session,
+            _uuid.UUID(run_a),
+            _uuid.UUID(run_b),
+            confidence_delta=confidence_delta,
+        )
+    if as_json:
+        typer.echo(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+        return
+    for line in report.lines():
+        typer.echo(line)
+
+
+@jobs_app.command("worker")
+def jobs_worker(
+    kinds: Annotated[
+        str | None, typer.Option("--kinds", help="Comma-separated job kinds; default is all.")
+    ] = None,
+    once: Annotated[bool, typer.Option("--once", help="Run a single job, then exit.")] = False,
+    max_jobs: Annotated[int | None, typer.Option("--max-jobs")] = None,
+    idle_timeout: Annotated[
+        float | None,
+        typer.Option("--idle-timeout", help="Exit after this many idle seconds."),
+    ] = None,
+    name: Annotated[str | None, typer.Option("--name", help="Worker name in the lock column.")] = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Claim jobs from the queue and run them until signalled."""
+    from concordance.jobs.worker import Worker, default_worker_name
+
+    settings, _ = start(seed, echo_config=False)
+    worker = Worker(
+        settings=settings,
+        name=name or default_worker_name(),
+        kinds=[k.strip() for k in kinds.split(",")] if kinds else None,
+        max_jobs=1 if once else max_jobs,
+        idle_timeout=0.0 if once else idle_timeout,
+    )
+    worker.install_signal_handlers()
+    stats = worker.run()
+    typer.echo("  ".join(f"{k}={v}" for k, v in stats.as_dict().items()))
+
+
+@jobs_app.command("enqueue")
+def jobs_enqueue(
+    kind: Annotated[str, typer.Argument(help="reconcile | eval | sweep | retune | expire_cases")],
+    payload: Annotated[
+        str | None, typer.Option("--payload", help="JSON object passed to the handler.")
+    ] = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Put one job on the queue."""
+    import json
+
+    from concordance.jobs.registry import is_known, known_kinds
+    from concordance.jobs.worker import enqueue
+
+    settings, _ = start(seed, echo_config=False)
+    import concordance.jobs.handlers  # noqa: F401  - registers the handlers
+
+    if not is_known(kind):
+        typer.secho(f"unknown kind {kind!r}. Known: {', '.join(known_kinds())}", fg="red")
+        raise typer.Exit(code=2)
+    job_id = enqueue(kind, json.loads(payload) if payload else {}, settings=settings)
+    typer.secho(f"queued job {job_id} ({kind})", fg="green")
+
+
+@jobs_app.command("list")
+def jobs_list(
+    status: Annotated[str | None, typer.Option("--status", help="PENDING|RUNNING|DONE|DEAD")] = None,
+    limit: Annotated[int, typer.Option("--limit")] = 20,
+    seed: SeedOpt = None,
+) -> None:
+    """What is on the queue."""
+    from concordance.db.repositories.jobs import JobRepository
+    from concordance.db.session import session_scope
+
+    settings, _ = start(seed, echo_config=False)
+    with session_scope(settings) as session:
+        page = JobRepository(session).list_jobs(status=status, limit=limit)
+        for job in page.items:
+            typer.echo(
+                f"{job.id:<6} {job.kind:<14} {job.status:<8} attempts={job.attempts}/"
+                f"{job.max_attempts} locked_by={job.locked_by or '-':<24} {job.last_error or ''}"[:160]
+            )
+        typer.echo(f"({page.total} total)")
+
+
+@jobs_app.command("expire-cases")
+def jobs_expire_cases(
+    today: Annotated[
+        str | None, typer.Option("--today", help="Pretend it is this date (YYYY-MM-DD).")
+    ] = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Run the case-expiry transition now, in this process."""
+    from datetime import date
+
+    from concordance.cases.lifecycle import expire_cases
+    from concordance.db.session import session_scope
+
+    settings, _ = start(seed, echo_config=False)
+    with session_scope(settings) as session:
+        report = expire_cases(session, today=date.fromisoformat(today) if today else None)
+    typer.echo(f"expired {report.expired} case(s) as of {report.today}")
 
 
 def _dataset_for(settings: Settings, out: Path | None, corruption: float | None, seed: int) -> Path:

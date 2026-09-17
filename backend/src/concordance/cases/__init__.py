@@ -1,1 +1,1 @@
-"""cases — filled in at its stage; see docs/PLAN.md."""
+"""Case lifecycle: opening a review case, and expiring one (PLAN Q3)."""

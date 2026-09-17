@@ -13,9 +13,9 @@ VARS := $(foreach v,CORRUPTION PROVIDERS SANCTIONS SEED LIMIT SCENARIO STRATEGY 
 help:
 	@$(RUN) help
 
-seed verify inspect fit eval sweep test test-unit cov lint fmt typecheck clean:
+seed verify inspect fit eval sweep reconcile worker migrate load test test-unit cov lint fmt typecheck clean:
 	@$(RUN) $@ $(VARS)
 
 # Declared now, real at the stage named. Failing loudly beats a confusing error.
-up down migrate load api worker web:
+up down api web:
 	@$(RUN) $@

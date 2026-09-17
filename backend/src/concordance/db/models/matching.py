@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -39,6 +40,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from concordance.db.base import Base, CreatedAtMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from concordance.db.enums import (
     Decision,
+    EvalStrategy,
     FittedFrom,
     ReviewStatus,
     Route,
@@ -61,12 +63,12 @@ class ScoringConfig(UUIDPrimaryKeyMixin, Base):
     version: Mapped[str] = mapped_column(String(100), nullable=False)
     #: The m/u probabilities, the lambda prior and the agreement-level tables,
     #: for both models - exactly `ScoringConfig.as_dict()` from the engine.
-    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     t_auto_accept: Mapped[float] = mapped_column(Float, nullable=False)
     t_auto_reject: Mapped[float] = mapped_column(Float, nullable=False)
     #: The isotonic calibrator's knots, so a stored confidence can be
     #: reproduced without refitting.
-    calibrator: Mapped[dict] = mapped_column(
+    calibrator: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     fitted_at: Mapped[datetime] = mapped_column(
@@ -107,6 +109,16 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
         postgresql.UUID(as_uuid=True), ForeignKey("scoring_configs.id", ondelete="SET NULL")
     )
     prompt_version: Mapped[str | None] = mapped_column(String(50))
+    #: Which strategy decided this run, and the full request it was started
+    #: with. Replay needs both: a run that does not record `max_candidates`
+    #: cannot be re-blocked identically, and one that does not record its
+    #: strategy can only be replayed by guessing from the routes it produced.
+    strategy: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default=EvalStrategy.PROBABILISTIC
+    )
+    request: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     provider_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
     sanction_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
 
@@ -127,6 +139,7 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
 
     __table_args__ = (
         check_values("status", RunStatus),
+        check_values("strategy", EvalStrategy, name="run_strategy_valid"),
         Index("ix_reconciliation_runs_status", "status"),
         Index("ix_reconciliation_runs_file_id", "file_id"),
     )
@@ -146,8 +159,8 @@ class LlmCall(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    request: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    response: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    request: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    response: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
@@ -184,7 +197,7 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     #: The engine's reason code and notes, plus the adjudicator's reasoning and
     #: cited evidence when the LLM decided it. Rendered by the Investigation UI.
-    explanation: Mapped[dict] = mapped_column(
+    explanation: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     review_status: Mapped[str] = mapped_column(
@@ -246,15 +259,15 @@ class MatchCandidate(Base):
         String(64), ForeignKey("providers.provider_id", ondelete="CASCADE"), nullable=False
     )
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
-    field_levels: Mapped[dict] = mapped_column(
+    field_levels: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    field_weights: Mapped[dict] = mapped_column(
+    field_weights: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     match_weight: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
     posterior: Mapped[float] = mapped_column(Float, nullable=False, server_default="0")
-    blocking_keys: Mapped[dict] = mapped_column(
+    blocking_keys: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 

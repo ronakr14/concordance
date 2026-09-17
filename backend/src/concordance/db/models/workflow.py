@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -112,8 +113,8 @@ class AuditLog(CreatedAtMixin, Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    before: Mapped[dict | None] = mapped_column(JSONB)
-    after: Mapped[dict | None] = mapped_column(JSONB)
+    before: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    after: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     request_id: Mapped[str | None] = mapped_column(String(64))
     ip: Mapped[str | None] = mapped_column(INET)
 

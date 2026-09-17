@@ -9,6 +9,7 @@ supervised refit reads from one shape rather than two.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -52,7 +53,7 @@ class GroundTruth(Base):
     expected_outcome: Mapped[str] = mapped_column(String(20), nullable=False)
     #: Which corruption operations the generator applied, and with what
     #: parameters - the per-record provenance behind a scenario's metrics.
-    corruption_profile: Mapped[dict] = mapped_column(
+    corruption_profile: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     scenario_tag: Mapped[str] = mapped_column(String(50), nullable=False, server_default="")
@@ -83,7 +84,7 @@ class EvalRun(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     ece: Mapped[float | None] = mapped_column(Float)
     #: The reliability diagram's bins, as rendered - stored so a report can be
     #: redrawn without rerunning the evaluation that produced it.
-    reliability_bins: Mapped[dict] = mapped_column(
+    reliability_bins: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     blocking_recall: Mapped[float | None] = mapped_column(Float)
@@ -118,7 +119,7 @@ class FeedbackEvent(CreatedAtMixin, Base):
         postgresql.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     label: Mapped[str] = mapped_column(String(20), nullable=False)
-    comparison_vector: Mapped[dict] = mapped_column(
+    comparison_vector: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 

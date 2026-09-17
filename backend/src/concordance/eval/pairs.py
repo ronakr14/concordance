@@ -16,10 +16,12 @@ from __future__ import annotations
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 from concordance.config import Settings
+from concordance.db.retry import with_reconnect
 from concordance.domain import Candidate, GroundTruth, SanctionRecord
 from concordance.logging_setup import Progress, get_logger
 from concordance.matching.blocking import InMemoryCandidateGenerator
@@ -172,6 +174,133 @@ def prepare(
     return prepared
 
 
+@dataclass
+class PostgresStream:
+    """Chunked normalization and blocking against Postgres.
+
+    One code path, two consumers. `prepare_from_postgres` flattens it to answer
+    "does the storage swap change any number the engine produces"; the
+    reconciliation run consumes it chunk by chunk so a five-thousand-record job
+    persists as it goes rather than holding every candidate list in memory
+    until the end.
+
+    Chunking is not a tuning knob, it is the difference between three minutes
+    and most of a day: the SQL generator answers a chunk in two queries and a
+    single record in two queries, and over a network link the round trips
+    dominate everything else.
+    """
+
+    session: Any
+    store: Any
+    generator: Any
+    total: int
+    truth: dict[str, GroundTruth]
+    chunk_size: int = 500
+    show_progress: bool = True
+    normalize_seconds: float = 0.0
+    block_seconds: float = 0.0
+    fetch_seconds: float = 0.0
+
+    def __len__(self) -> int:
+        return self.total
+
+    def chunks(self) -> Iterator[list[RecordWork]]:
+        with Progress(
+            "prepare.block", total=self.total, every=1000, enabled=self.show_progress
+        ) as progress:
+            for start in range(0, self.total, self.chunk_size):
+                # A chunk at a time rather than one query for the whole file:
+                # a hosted database that closes a long-running connection turns
+                # a single five-thousand-row fetch into a hang, and a short
+                # statement that has to be retried costs one chunk.
+                # Clamped to what is left, not the chunk size: a run limited to
+                # forty records asked for five hundred and scored all of them.
+                size = min(self.chunk_size, self.total - start)
+                mark = time.perf_counter()
+                chunk = with_reconnect(
+                    self.session,
+                    partial(self.store.sanction_batch, start, size),
+                    what="sanction chunk",
+                )
+                self.fetch_seconds += time.perf_counter() - mark
+                if not chunk:
+                    break
+
+                mark = time.perf_counter()
+                normalized = [normalize_sanction(record) for record in chunk]
+                self.normalize_seconds += time.perf_counter() - mark
+
+                mark = time.perf_counter()
+                candidate_lists = with_reconnect(
+                    self.session,
+                    partial(self.generator.candidates_batch, normalized),
+                    what="blocking chunk",
+                )
+                wanted = [c.provider_id for lst in candidate_lists for c in lst]
+                providers = with_reconnect(
+                    self.session,
+                    partial(self.generator.normalized_providers, wanted),
+                    what="candidate providers",
+                )
+                work: list[RecordWork] = []
+                for record, norm, candidates in zip(chunk, normalized, candidate_lists, strict=True):
+                    progress.tick()
+                    pairs: list[CandidatePair] = [
+                        (providers[c.provider_id], c)
+                        for c in candidates
+                        if c.provider_id in providers
+                    ]
+                    work.append(RecordWork(record, norm, pairs, self.truth.get(record.record_id)))
+                self.block_seconds += time.perf_counter() - mark
+                yield work
+
+    @property
+    def stage_seconds(self) -> dict[str, float]:
+        return {
+            "index": 0.0,  # the index is a table, written by the loader
+            "fetch": self.fetch_seconds,
+            "normalize": self.normalize_seconds,
+            "block": self.block_seconds,
+        }
+
+
+def stream_from_postgres(
+    session: Any,
+    max_candidates: int = 50,
+    trigram_floor: float = 0.3,
+    limit: int | None = None,
+    chunk_size: int = 500,
+    with_truth: bool = True,
+    show_progress: bool = True,
+) -> PostgresStream:
+    """The blocking half of a Postgres run, ready to be iterated in chunks.
+
+    `with_truth=False` for a real reconciliation: production data has no ground
+    truth, and loading a table that is empty there would make the evaluation
+    path and the production path differ in a way nobody notices until it does.
+    """
+    from concordance.store.postgres_store import PostgresRecordStore
+    from concordance.store.sql_candidates import SqlCandidateGenerator
+
+    store = PostgresRecordStore(session)
+    generator = SqlCandidateGenerator(
+        session=session, max_candidates=max_candidates, trigram_floor=trigram_floor
+    )
+    # `limit` bounds the fetch rather than the list afterwards: a smoke run
+    # over twenty-five records should not pull five thousand rows across the
+    # wire to throw all but twenty-five of them away.
+    total = store.sanction_count()
+    return PostgresStream(
+        session=session,
+        store=store,
+        generator=generator,
+        total=min(total, limit) if limit else total,
+        truth=store.ground_truth() if with_truth else {},
+        chunk_size=chunk_size,
+        show_progress=show_progress,
+    )
+
+
 def prepare_from_postgres(
     session: Any,
     dataset: Path | str,
@@ -189,68 +318,32 @@ def prepare_from_postgres(
     and shares every other line, including the normalization and the ordering.
     A metric that moves between the two is a bug in the seam, which is what
     GATE 5 is asking.
-
-    Records are processed in chunks because the SQL generator answers a chunk
-    in two queries and a record in two queries: at 5,000 records over a network
-    link that is the difference between three minutes and most of a day.
     """
-    from concordance.store.postgres_store import PostgresRecordStore
-    from concordance.store.sql_candidates import SqlCandidateGenerator
-
     started = time.perf_counter()
     path = Path(dataset)
-    store = PostgresRecordStore(session)
-    generator = SqlCandidateGenerator(
-        session=session, max_candidates=max_candidates, trigram_floor=trigram_floor
+    stream = stream_from_postgres(
+        session,
+        max_candidates=max_candidates,
+        trigram_floor=trigram_floor,
+        limit=limit,
+        chunk_size=chunk_size,
+        show_progress=show_progress,
     )
 
-    truth = store.ground_truth()
-    records = store.all_sanctions()
-    if limit:
-        records = records[:limit]
-
     work: list[RecordWork] = []
-    normalize_seconds = 0.0
-    block_seconds = 0.0
-    with Progress(
-        "prepare.block", total=len(records), every=1000, enabled=show_progress
-    ) as progress:
-        for start in range(0, len(records), chunk_size):
-            chunk = records[start : start + chunk_size]
-
-            mark = time.perf_counter()
-            normalized = [normalize_sanction(record) for record in chunk]
-            normalize_seconds += time.perf_counter() - mark
-
-            mark = time.perf_counter()
-            candidate_lists = generator.candidates_batch(normalized)
-            providers = generator.normalized_providers(
-                candidate.provider_id for lst in candidate_lists for candidate in lst
-            )
-            for record, norm, candidates in zip(chunk, normalized, candidate_lists, strict=True):
-                progress.tick()
-                pairs: list[CandidatePair] = [
-                    (providers[c.provider_id], c)
-                    for c in candidates
-                    if c.provider_id in providers
-                ]
-                work.append(RecordWork(record, norm, pairs, truth.get(record.record_id)))
-            block_seconds += time.perf_counter() - mark
+    for batch in stream.chunks():
+        work.extend(batch)
 
     prepared = PreparedDataset(
         path=path,
         corruption_level=ParquetRecordStore(path).manifest.get("corruption_level"),
         work=work,
-        index_stats=generator.stats.as_dict(),
-        provider_snapshot_hash=store.snapshot_hash(),
-        sanction_snapshot_hash=store.sanction_snapshot_hash(),
-        provider_count=store.provider_count(),
+        index_stats=stream.generator.stats.as_dict(),
+        provider_snapshot_hash=stream.store.snapshot_hash(),
+        sanction_snapshot_hash=stream.store.sanction_snapshot_hash(),
+        provider_count=stream.store.provider_count(),
         prepare_seconds=time.perf_counter() - started,
-        stage_seconds={
-            "index": 0.0,  # the index is a table, written by the loader
-            "normalize": normalize_seconds,
-            "block": block_seconds,
-        },
+        stage_seconds=stream.stage_seconds,
     )
     log.info(
         "prepare.done",

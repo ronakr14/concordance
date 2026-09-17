@@ -30,10 +30,7 @@ PY = str(VENV_PY if VENV_PY.exists() else Path(sys.executable))
 DEFERRED = {
     "up": (10, "Docker packaging"),
     "down": (10, "Docker packaging"),
-    "migrate": (5, "Alembic migrations"),
-    "load": (5, "The Postgres loader"),
     "api": (7, "The FastAPI app"),
-    "worker": (6, "The job worker"),
     "web": (8, "The React app"),
 }
 
@@ -126,6 +123,40 @@ def sweep(args: list[str]) -> int:
     return _run(*argv)
 
 
+def migrate(args: list[str]) -> int:
+    v = _vars(args)
+    return _run(PY, "-m", "concordance.cli", "db", "upgrade", v.get("REVISION", "head"))
+
+
+def load(args: list[str]) -> int:
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "db", "load"]
+    if "FROM" in v:
+        argv += ["--from", v["FROM"]]
+    return _run(*argv)
+
+
+def worker(args: list[str]) -> int:
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "jobs", "worker"]
+    for key, flag in (("KINDS", "--kinds"), ("MAX_JOBS", "--max-jobs"), ("IDLE", "--idle-timeout")):
+        if key in v:
+            argv += [flag, v[key]]
+    return _run(*argv)
+
+
+def reconcile(args: list[str]) -> int:
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "run", "reconcile"]
+    argv += ["--strategy", v.get("STRATEGY", "probabilistic")]
+    for key, flag in (("LIMIT", "--limit"), ("CONFIG", "--config"), ("SEED", "--seed")):
+        if key in v:
+            argv += [flag, v[key]]
+    if v.get("QUEUE", "").lower() in {"1", "true", "yes"}:
+        argv += ["--queue"]
+    return _run(*argv)
+
+
 def test(args: list[str]) -> int:
     return _run(PY, "-m", "pytest", *args)
 
@@ -167,6 +198,10 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "fit": fit,
     "eval": evaluate,
     "sweep": sweep,
+    "migrate": migrate,
+    "load": load,
+    "reconcile": reconcile,
+    "worker": worker,
     "test": test,
     "test-unit": test_unit,
     "cov": cov,

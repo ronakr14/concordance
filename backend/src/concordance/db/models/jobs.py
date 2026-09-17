@@ -9,6 +9,7 @@ can read is what makes a stuck job diagnosable.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -25,7 +26,7 @@ class Job(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(String(50), nullable=False)
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=JobStatus.PENDING
     )

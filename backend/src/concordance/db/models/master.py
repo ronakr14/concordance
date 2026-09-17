@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -175,7 +176,7 @@ class ColumnMapping(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     #: `{canonical_field: source_header}`. Canonical fields are
     #: `sanctions.CANONICAL_FIELDS`; anything else is rejected on write.
-    mapping: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    mapping: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         postgresql.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
@@ -237,7 +238,7 @@ class SanctionRecord(
     file_id: Mapped[uuid.UUID | None] = mapped_column(
         postgresql.UUID(as_uuid=True), ForeignKey("sanction_files.id", ondelete="CASCADE")
     )
-    raw: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    raw: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     #: The date of birth exactly as the file wrote it. Sanction files carry
     #: partial and malformed dates - `08-24-57`, `May 26, 1985`, `20000326` -
     #: and which of those a record has is evidence the matcher uses. The typed

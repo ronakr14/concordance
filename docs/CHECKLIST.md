@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `5 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
+Progress: `6 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -818,80 +818,123 @@ Stages 1–4 does not change; if it does, the seam was wrong and that is the rea
 ---
 ## Stage 6 — Orchestration, runs, replay ⭐ · ~8h
 
+Design notes and the measured numbers live in `docs/orchestration.md`.
+
 ### Job queue
 
-- [ ] Enqueue helper writing to `jobs`
-- [ ] Dequeue with `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1` ⭐
-- [ ] Worker loop: claim, execute, mark done or failed, release
-- [ ] `attempts` increment, `max_attempts` cap
-- [ ] Exponential backoff via `run_after`
-- [ ] Dead-letter state (`DEAD`) after `max_attempts`, with `last_error` retained
-- [ ] Stale lock recovery — a job `RUNNING` past a timeout is reclaimable ⭐
-- [ ] Graceful shutdown on SIGTERM: finish the current job, do not claim another
-- [ ] Handlers registered by `kind`: `reconcile`, `eval`, `sweep`, `retune`, `expire_cases`
-- [ ] Concurrency safe with multiple worker replicas (test with two)
+- [x] Enqueue helper writing to `jobs`
+- [x] Dequeue with `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1` ⭐
+- [x] Worker loop: claim, execute, mark done or failed, release
+- [x] `attempts` increment, `max_attempts` cap
+- [x] Exponential backoff via `run_after`
+- [x] Dead-letter state (`DEAD`) after `max_attempts`, with `last_error` retained
+- [x] Stale lock recovery — a job `RUNNING` past a timeout is reclaimable ⭐ — and the claim
+  commits *before* the handler runs, which is what leaves a stale lock to find. Committing
+  once at the end would make a killed worker's attempt vanish with the row lock
+- [x] Graceful shutdown on SIGTERM: finish the current job, do not claim another — SIGINT and
+  SIGBREAK too, since Windows does not deliver SIGTERM
+- [x] Handlers registered by `kind`: `reconcile`, `eval`, `sweep`, `retune`, `expire_cases`
+- [x] A job whose kind has no handler dead-letters on the first attempt rather than burning
+  three backoffs on work nothing can run
+- [x] Concurrency safe with multiple worker replicas (test with two)
 
 ### `engine.py`
 
-- [ ] Full pipeline: load → normalize → block → compare → score → route → adjudicate → persist
-- [ ] `ENGINE_VERSION` constant, written into every run ⭐
-- [ ] Batched processing with progress reporting into `reconciliation_runs`
-- [ ] Per-stage timing captured
-- [ ] Partial failure handling: one bad record fails that record, not the run
-- [ ] Run status transitions correctly on success, failure and cancellation
-- [ ] Counts by outcome aggregated onto the run row
-- [ ] LLM call count, tokens and cost aggregated onto the run row
+- [x] Full pipeline: load → normalize → block → compare → score → route → adjudicate → persist
+- [x] `ENGINE_VERSION` constant, written into every run ⭐
+- [x] Batched processing with progress reporting into `reconciliation_runs` — committed per
+  chunk, not flushed. A run whose counts are invisible until it ends is not a run anyone can
+  watch, and the same commit is what leaves four thousand decisions behind when a run dies at
+  the four-thousand-and-first
+- [x] Per-stage timing captured
+- [x] Partial failure handling: one bad record fails that record, not the run
+- [x] Run status transitions correctly on success, failure and cancellation — the failure path
+  rolls back first and writes `FAILED` on a clean transaction, because the statement that
+  failed may have poisoned the one it was in
+- [x] Counts by outcome aggregated onto the run row
+- [x] LLM call count, tokens and cost aggregated onto the run row
+- [x] **`matching/engine.py` imports nothing that knows about storage** ⭐ — the Stage 0 seam
+  holds through the stage that was most likely to break it. `jobs/reconcile.py` is the half
+  that knows about Postgres
 
 ### Snapshot hashing ⭐
 
-- [ ] `provider_snapshot_hash` — stable hash over the provider set actually used
-- [ ] `sanction_snapshot_hash` — same for the sanction file's records
-- [ ] Hash is order-independent and column-explicit, so it is reproducible
-- [ ] Run records `engine_version`, `scoring_config_id`, `prompt_version` alongside the hashes
+- [x] `provider_snapshot_hash` — stable hash over the provider set actually used
+- [x] `sanction_snapshot_hash` — same for the sanction file's records
+- [x] Hash is order-independent and column-explicit, so it is reproducible
+- [x] Read in keyset-paged statements rather than one streamed scan ⭐ — the hosted database
+  closed the connection partway through a single 50,000-row scan and the client sat on a dead
+  socket, so the run looked hung rather than failed. Paging made every statement short; TCP
+  keepalives on the engine turn the remaining cases into errors instead of hangs. The hash is
+  unchanged and still matches Parquet's exactly
+- [x] Run records `engine_version`, `scoring_config_id`, `prompt_version` alongside the hashes
+- [x] Run also records `strategy` and the full `request` ⭐ — new columns, one migration. A
+  replay that had to infer the strategy from the routes it produced, or re-block with a
+  different `max_candidates`, would not be a replay
 
 ### Replay ⭐
 
-- [ ] `concordance replay <run_id>` re-executes with the stored versions and hashes
-- [ ] Replay refuses to run if the current data no longer matches the snapshot hash
-- [ ] Replay serves every LLM call from cache — zero network calls
-- [ ] Replay asserts decision-level identity with the original run and reports any drift
-- [ ] Replay is exercised in a test
+- [x] `concordance run replay <run_id>` re-executes with the stored versions and hashes
+- [x] Replay refuses to run if the current data no longer matches the snapshot hash
+- [x] Replay serves every LLM call from cache — zero network calls, enforced by an `offline`
+  flag on the router that turns a cache miss into an error rather than a call ⭐
+- [x] Replay asserts decision-level identity with the original run and reports any drift
+- [x] Replay writes nothing — a replay that inserted its own results would supersede the rows
+  it was checking ⭐
+- [x] Replay is exercised in a test
 
 ### Diff ⭐
 
-- [ ] `concordance diff <run_a> <run_b>`
-- [ ] Reports counts: unchanged, changed decision, changed confidence beyond a threshold, new, removed
-- [ ] Per-changed-record detail: old decision, new decision, old/new confidence
-- [ ] Reports the config delta (scoring config, prompt version, engine version) that explains the change ⭐
-- [ ] Machine-readable output for the Stage 9 UI
+- [x] `concordance run diff <run_a> <run_b>`
+- [x] Reports counts: unchanged, changed decision, changed confidence beyond a threshold, new, removed
+- [x] Per-changed-record detail: old decision, new decision, old/new confidence
+- [x] Reports the config delta (scoring config, prompt version, engine version) that explains the change ⭐
+- [x] Machine-readable output for the Stage 9 UI (`--json`)
 
 ### Case expiry job (Q3 — scheduled)
 
-- [ ] `expire_cases` handler
-- [ ] Moves `ACTIVE` cases past `end_date` to `EXPIRED`
-- [ ] Writes an audit log entry for each transition ⭐
-- [ ] Audit rows use `actor_user_id = NULL`, `actor_role = 'system'` ⭐
-- [ ] In-house interval scheduler in the worker loop — no external cron, no APScheduler ⭐
-- [ ] Job is idempotent — a second run in the same day transitions nothing
-- [ ] Startup catch-up run handles cases that expired while the worker was down ⭐
+- [x] `expire_cases` handler
+- [x] Moves `ACTIVE` cases past `end_date` to `EXPIRED`
+- [x] Writes an audit log entry for each transition ⭐
+- [x] Audit rows use `actor_user_id = NULL`, `actor_role = 'system'` ⭐
+- [x] In-house interval scheduler in the worker loop — no external cron, no APScheduler ⭐
+- [x] Job is idempotent — a second run in the same day transitions nothing
+- [x] Startup catch-up run handles cases that expired while the worker was down ⭐
+- [x] Two workers cannot double-schedule it: the scheduler proposes, and the worker enqueues
+  only when no job of that kind is already pending
 
 ### Supersede & conflict handling (Q5) ⭐
 
-- [ ] A new run marks prior `match_results` for the same sanction record as superseded ⭐
-- [ ] Nothing is ever deleted or overwritten — history stays reachable ⭐
-- [ ] **Existing `ACTIVE` cases are never mutated by a re-run** ⭐
-- [ ] A re-run reaching a different decision on a record with an `ACTIVE` case sets `conflict_flag` and `conflict_match_result_id` ⭐
-- [ ] Conflicts surface in the review queue as their own filter
-- [ ] Test: re-run with a changed config, confirm the active case survives untouched and is flagged
+- [x] A new run marks prior `match_results` for the same sanction record as superseded ⭐
+- [x] Nothing is ever deleted or overwritten — history stays reachable ⭐
+- [x] **Existing `ACTIVE` cases are never mutated by a re-run** ⭐
+- [x] A re-run reaching a different decision on a record with an `ACTIVE` case sets `conflict_flag` and `conflict_match_result_id` ⭐
+- [x] The conflict is audited with a `system` actor, carrying both decisions ⭐
+- [x] Conflicts surface in the review queue as their own filter (`CaseRepository.list_cases(conflicts_only=True)`)
+- [x] Test: re-run with a changed config, confirm the active case survives untouched and is flagged
 
 ### GATE 6
-- [ ] 5,000 sanction records reconciled against 50,000 providers in an acceptable wall time — **record the number** ⭐
-- [ ] Two worker replicas process a queue with no double-execution ⭐
-- [ ] `concordance replay <run_id>` is decision-identical to the original ⭐
-- [ ] `concordance diff` between two scoring configs lists changed decisions with the causing config delta ⭐
-- [ ] Killing the worker mid-run leaves the job reclaimable, not stuck
-- [ ] Case expiry job transitions a seeded past-dated case and writes a `system`-actor audit row ⭐
-- [ ] Re-run supersedes prior results; active case survives untouched and is conflict-flagged ⭐
+- [ ] 5,000 sanction records reconciled against 50,000 providers in an acceptable wall time — **record the number** ⭐ — a 500-record run finished end to end in **233 s**, of which roughly 76 s was recomputing the two snapshot hashes. The full-file number is still outstanding; see the note below on the link to the hosted database
+- [x] Two worker replicas process a queue with no double-execution ⭐ — eight jobs, two workers, one audit row per execution: exactly eight rows, and both workers did some of them
+- [x] `concordance run replay <run_id>` is decision-identical to the original ⭐ — 40 of 40 records identical, zero drift, zero model calls
+- [x] Replay refuses to run when the snapshot hash no longer matches ⭐
+- [x] `concordance run diff` between two scoring configs lists changed decisions with the causing config delta ⭐ — the delta names the config version and the `t_auto_accept` move that flipped them
+- [x] Killing the worker mid-run leaves the job reclaimable, not stuck — the claim commits before the work starts, so a dead worker leaves a visible row with its attempt counted, and `reclaim_stale` returns it to the pool
+- [x] A failing job backs off, retries, then dead-letters with its error retained; a job whose kind has no handler dead-letters on the first attempt
+- [x] Graceful shutdown finishes the job in hand and claims no other
+- [x] Case expiry job transitions a seeded past-dated case and writes a `system`-actor audit row ⭐; a second run the same day transitions nothing
+- [x] Re-run supersedes prior results; active case survives untouched and is conflict-flagged ⭐
+- [x] `make lint`, `make typecheck` and the unit suite stay green — `make typecheck` is clean again, which it had not been since Stage 5: twenty-one accumulated `Mapped[dict]` and SQLAlchemy typing errors were fixed rather than carried forward
+
+> **The link to the hosted database is the bottleneck, and it is worth writing down.** Against
+> Neon over this connection, a single statement returning 50,000 provider rows was closed
+> mid-flight by the server, and large statements in either direction intermittently wedge the
+> socket: the server finishes and waits, the client waits for a reply that never arrives, and
+> the run hangs with no error at all. Three changes came out of that, and all three are the
+> right thing to do regardless — snapshot hashing reads in keyset-paged statements, inserts
+> are capped at `DB_INSERT_PAGE_SIZE` rows per statement, and `with_reconnect` retries a
+> dropped connection on a fresh one. A local Postgres, which is what `docker compose up` gives
+> at Stage 10, does not behave this way; the full-file timing is best taken there.
 
 ---
 

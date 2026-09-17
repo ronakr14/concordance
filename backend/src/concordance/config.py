@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # Seconds to wait for a connection before giving up. Deliberately short:
     # a database that is down should be reported, not waited on.
     DB_CONNECT_TIMEOUT: int = Field(default=5, ge=1, le=60)
+    #: Server-side ceiling on a single statement, in seconds; 0 disables it. A
+    #: hosted database that stops answering should surface as an error on the
+    #: statement rather than as a run that never ends.
+    DB_STATEMENT_TIMEOUT: int = Field(default=180, ge=0, le=3600)
+    #: Rows per INSERT statement. Bounds how large a single statement's payload
+    #: can get, which is what keeps a slow link from stalling mid-statement.
+    DB_INSERT_PAGE_SIZE: int = Field(default=50, ge=1, le=1000)
     JWT_SECRET: str | None = None  # Stage 7
     JWT_ACCESS_TTL: int = 900  # Stage 7, seconds
     JWT_REFRESH_TTL: int = 1_209_600  # Stage 7, seconds

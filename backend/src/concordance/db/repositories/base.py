@@ -55,7 +55,9 @@ def clamp_limit(limit: int | None) -> int:
     return min(limit, MAX_PAGE_SIZE)
 
 
-def paginate(session: Session, stmt: Select, limit: int | None, offset: int = 0) -> Page[Any]:
+def paginate(
+    session: Session, stmt: Select[Any], limit: int | None, offset: int = 0
+) -> Page[Any]:
     """Run `stmt` for one page and count the rows it would have returned.
 
     Two queries rather than a window function: the count is over the same

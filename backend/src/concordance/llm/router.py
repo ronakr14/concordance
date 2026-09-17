@@ -209,6 +209,10 @@ class LLMRouter:
     sleep: Any = time.sleep
     rng: random.Random | None = None
     stats: RouterStats = field(default_factory=RouterStats)
+    #: Replay mode. A cache miss raises rather than reaching a provider, so a
+    #: replay that claims "every call served from cache" cannot quietly be
+    #: wrong: the only way to produce a different answer is to fail loudly.
+    offline: bool = False
 
     @classmethod
     def from_settings(
@@ -217,6 +221,7 @@ class LLMRouter:
         *,
         cache: Any = None,
         providers: Sequence[LLMProvider] | None = None,
+        offline: bool = False,
     ) -> LLMRouter:
         resolved_cache = cache if cache is not None else FileCache(settings.llm_cache_dir)
         return cls(
@@ -224,6 +229,7 @@ class LLMRouter:
             cache=resolved_cache,
             enabled=settings.LLM_ENABLED,
             max_attempts=settings.LLM_MAX_ATTEMPTS,
+            offline=offline,
         )
 
     @property
@@ -260,6 +266,12 @@ class LLMRouter:
             cached = self._from_cache(key)
             if cached is not None:
                 return cached
+
+            if self.offline:
+                failures[provider.name] = ProviderUnavailable(
+                    f"offline: no cached answer for {provider.name}/{provider.model}"
+                )
+                continue
 
             try:
                 response = self._call_with_retries(provider, messages, schema, key, **opts)

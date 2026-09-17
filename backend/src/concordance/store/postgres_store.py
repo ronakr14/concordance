@@ -18,8 +18,8 @@ Parquet row had, which is what makes the two generators comparable at all.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
-from typing import Any
+from collections.abc import Iterable, Iterator, Mapping
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,6 +33,7 @@ from concordance.db.models import (
 from concordance.db.models import (
     SanctionRecord as SanctionRow,
 )
+from concordance.db.retry import with_reconnect
 from concordance.domain import GroundTruth, Outcome
 from concordance.domain import Provider as DomainProvider
 from concordance.domain import SanctionRecord as DomainSanction
@@ -46,6 +47,11 @@ from concordance.store.hashing import (
 #: round trip is amortised, small enough that a 50k table never lands in memory
 #: whole.
 STREAM_BATCH = 5_000
+
+#: Rows per statement when hashing. Small enough that one statement takes
+#: seconds rather than minutes, which is what keeps a hosted database from
+#: closing the connection out from under it.
+HASH_PAGE = 1_000
 
 
 def _to_provider(row: Any) -> DomainProvider:
@@ -148,9 +154,9 @@ class PostgresRecordStore:
     def snapshot_hash(self) -> str:
         """Must equal `ParquetRecordStore.snapshot_hash()` for the same data."""
         columns = [getattr(ProviderRow, name) for name in PROVIDER_HASH_FIELDS]
-        stmt = select(*columns).execution_options(stream_results=True)
-        rows = self.session.execute(stmt).mappings()
-        return combined_hash(rows, PROVIDER_HASH_FIELDS)
+        return combined_hash(
+            self._paged(columns, ProviderRow.provider_id), PROVIDER_HASH_FIELDS
+        )
 
     # -- extras used by evaluation ---------------------------------------
     def sanction_count(self) -> int:
@@ -171,9 +177,33 @@ class PostgresRecordStore:
             else getattr(SanctionRow, name)
             for name in SANCTION_HASH_FIELDS
         ]
-        stmt = select(*columns).execution_options(stream_results=True)
-        rows = self.session.execute(stmt).mappings()
-        return combined_hash(rows, SANCTION_HASH_FIELDS)
+        return combined_hash(self._paged(columns, SanctionRow.record_id), SANCTION_HASH_FIELDS)
+
+    def _paged(
+        self, columns: list[Any], key: Any, page: int = HASH_PAGE
+    ) -> Iterator[Mapping[str, Any]]:
+        """The hash inputs, one short statement at a time.
+
+        Keyset pagination rather than a single streamed scan, because a hosted
+        database will close a connection that spends minutes feeding one result
+        set across a slow link, and a snapshot hash that fails intermittently is
+        worse than one that takes ten statements. The hash is order-independent
+        by construction - `combined_hash` sorts the per-row digests - so paging
+        cannot change the answer.
+        """
+        after: Any = None
+        while True:
+            stmt = select(key.label("_key"), *columns).order_by(key).limit(page)
+            if after is not None:
+                stmt = stmt.where(key > after)
+            def read(statement: Any = stmt) -> list[Mapping[str, Any]]:
+                return [cast("Mapping[str, Any]", r) for r in self.session.execute(statement).mappings()]
+
+            rows = with_reconnect(self.session, read, what="snapshot_hash page")
+            if not rows:
+                return
+            yield from rows
+            after = rows[-1]["_key"]
 
     def all_sanctions(self) -> list[DomainSanction]:
         stmt = select(SanctionRow).order_by(SanctionRow.ordinal)

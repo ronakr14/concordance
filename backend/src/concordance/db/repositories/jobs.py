@@ -10,9 +10,9 @@ row lock and the queue serialises.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
 from concordance.db.enums import JobStatus
@@ -70,10 +70,15 @@ class JobRepository:
     def reclaim_stale(self, *, older_than: timedelta = STALE_LOCK) -> int:
         """Return jobs whose worker died to the pending pool. Returns the count."""
         cutoff = datetime.now(UTC) - older_than
-        result = self.session.execute(
-            update(Job)
-            .where(Job.status == JobStatus.RUNNING, Job.locked_at < cutoff)
-            .values(status=str(JobStatus.PENDING), locked_at=None, locked_by=None)
+        # `rowcount` is a CursorResult attribute; an UPDATE always produces one,
+        # and the cast is how the type checker is told so.
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                update(Job)
+                .where(Job.status == JobStatus.RUNNING, Job.locked_at < cutoff)
+                .values(status=str(JobStatus.PENDING), locked_at=None, locked_by=None)
+            ),
         )
         return int(result.rowcount or 0)
 
@@ -98,6 +103,19 @@ class JobRepository:
         job.status = str(JobStatus.PENDING)
         job.run_after = datetime.now(UTC) + timedelta(
             seconds=backoff_seconds * (2 ** (job.attempts - 1))
+        )
+
+    def has_pending(self, kind: str) -> bool:
+        """Whether a job of this kind is already waiting.
+
+        The scheduler asks before enqueuing, which is how two workers proposing
+        the same daily job produce one row rather than two.
+        """
+        return (
+            self.session.scalar(
+                select(Job.id).where(Job.kind == kind, Job.status == JobStatus.PENDING).limit(1)
+            )
+            is not None
         )
 
     def list_jobs(
