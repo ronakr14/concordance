@@ -1,1 +1,1 @@
-"""api — filled in at its stage; see docs/PLAN.md."""
+"""The FastAPI application: routers, dependencies, schemas, error envelope."""

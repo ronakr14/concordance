@@ -272,17 +272,21 @@ def stream_from_postgres(
     chunk_size: int = 500,
     with_truth: bool = True,
     show_progress: bool = True,
+    file_id: Any = None,
 ) -> PostgresStream:
     """The blocking half of a Postgres run, ready to be iterated in chunks.
 
     `with_truth=False` for a real reconciliation: production data has no ground
     truth, and loading a table that is empty there would make the evaluation
     path and the production path differ in a way nobody notices until it does.
+
+    `file_id` narrows the sanction side to one uploaded file; without it the
+    stream reads the current version of every record.
     """
     from concordance.store.postgres_store import PostgresRecordStore
     from concordance.store.sql_candidates import SqlCandidateGenerator
 
-    store = PostgresRecordStore(session)
+    store = PostgresRecordStore(session, file_id=file_id)
     generator = SqlCandidateGenerator(
         session=session, max_candidates=max_candidates, trigram_floor=trigram_floor
     )

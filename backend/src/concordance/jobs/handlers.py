@@ -32,6 +32,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from concordance.audit import service as audit
+from concordance.audit.service import Actor
 from concordance.cases.lifecycle import expire_cases as _expire_cases
 from concordance.config import Settings
 from concordance.db.repositories.evaluation import EvalRepository
@@ -144,6 +146,22 @@ def handle_retune(session: Session, settings: Settings, payload: dict[str, Any])
     if payload.get("write_file", True):
         fitted.config.write(settings.DATA_DIR / "configs" / f"{fitted.config.config_id}.json")
     row = import_scoring_config(session, fitted.config, notes="retune job")
+    # A new config changes what every later run decides, so it is recorded
+    # like any other change of state - by the system, since a job did it.
+    audit.record(
+        session,
+        Actor.system(),
+        "config.retuned",
+        entity_type="scoring_config",
+        entity_id=row.id,
+        after={
+            "version": row.version,
+            "t_auto_accept": row.t_auto_accept,
+            "t_auto_reject": row.t_auto_reject,
+            "fitted_from": row.fitted_from,
+            "requested_by": payload.get("triggered_by"),
+        },
+    )
     return {
         "config": row.version,
         "scoring_config_id": str(row.id),

@@ -29,6 +29,7 @@ Append-only. The application role has `UPDATE` and `DELETE` revoked.
 
 **Indexes**
 
+- `ix_audit_logs_action` on audit_logs.action
 - `ix_audit_logs_actor_user_id` on audit_logs.actor_user_id
 - `ix_audit_logs_created_at` on created_at DESC
 - `ix_audit_logs_entity_type_entity_id` on audit_logs.entity_type, audit_logs.entity_id
@@ -59,6 +60,9 @@ A confirmed match under review for a fixed window.
 **Indexes**
 
 - `ix_cases_conflict_flag` on cases.conflict_flag (partial: `conflict_flag`)
+- `ix_cases_created_at` on cases.created_at
+- `ix_cases_match_result_id` on cases.match_result_id
+- `ix_cases_provider_id` on cases.provider_id
 - `ix_cases_status_end_date` on cases.status, cases.end_date
 - `uq_cases_active_provider_sanction` on cases.provider_id, cases.sanction_record_id (unique, partial: `status = 'ACTIVE'`)
 - `uq_cases_case_number` on cases.case_number (unique)
@@ -225,6 +229,7 @@ The engine's decision per record per run. Superseded rather than updated (Q5).
 | `reviewed_by` | `UUID` | yes | — | Reviewer who actioned it. |
 | `reviewed_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When they actioned it. |
 | `reviewer_comment` | `TEXT` | yes | — | Reviewer's note. |
+| `approved_provider_id` | `VARCHAR(64)` | yes | — | The provider a reviewer approved. Kept beside `chosen_provider_id` rather than overwriting it: on an ambiguous result the engine's column holds only its top-ranked candidate, and the reviewer's pick often differs. |
 | `superseded_by` | `UUID` | yes | — | The later result that replaced this one (Q5). Null means this row is current; every list query filters on that. |
 | `superseded_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When it was superseded. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
@@ -233,7 +238,10 @@ The engine's decision per record per run. Superseded rather than updated (Q5).
 
 **Indexes**
 
+- `ix_match_results_created_at` on match_results.created_at
 - `ix_match_results_current` on match_results.run_id, match_results.review_status (partial: `superseded_by IS NULL`)
+- `ix_match_results_current_confidence` on calibrated_confidence DESC NULLS LAST (partial: `superseded_by IS NULL`)
+- `ix_match_results_current_decision` on match_results.decision, match_results.review_status (partial: `superseded_by IS NULL`)
 - `ix_match_results_run_id_review_status` on match_results.run_id, match_results.review_status
 - `ix_match_results_sanction_record_id` on match_results.sanction_record_id
 - `uq_match_results_run_id_sanction_record_id` on match_results.run_id, match_results.sanction_record_id (unique)
@@ -329,13 +337,16 @@ The provider master. Written only by the loader; read by everything.
 | `llm_tokens` | `INTEGER` | no | `0` | Prompt plus completion tokens across those calls. |
 | `llm_cost_usd` | `NUMERIC(12, 6)` | no | `0` | Cost from the price table. Numeric rather than float because it is summed across runs. |
 | `error` | `TEXT` | yes | — | Failure detail when `status` is `FAILED`. |
+| `job_id` | `BIGINT` | yes | — | The queue row executing this run, when it was started through the API. Null for a run started from the CLI. |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
 
 **Indexes**
 
+- `ix_reconciliation_runs_created_at` on reconciliation_runs.created_at
 - `ix_reconciliation_runs_file_id` on reconciliation_runs.file_id
 - `ix_reconciliation_runs_status` on reconciliation_runs.status
+- `uq_reconciliation_runs_live_scope` on coalesce(file_id, nil UUID) (unique; partial: `status IN ('QUEUED', 'RUNNING')`). One live run per file, and one for the global scope.
 
 ### `refresh_tokens`
 
@@ -417,6 +428,9 @@ One row per row of an uploaded file, extracted into the canonical fields with th
 | `zip5` | `VARCHAR(5)` | no | `` | Derived. First five digits of the postal code. |
 | `trigram_key` | `VARCHAR(200)` | no | `` | Derived. `name_sorted_norm` (individual) or `org_name_norm` (organization) with spaces removed - the exact string the trigram block compares. |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
+| `is_current` | `BOOLEAN` | no | `true` | Whether this is the current version of the record. An upload that changes a known record - same `source_authority` and `record_id` - inserts a new row and sets this false on the old one, which earlier runs still point at. |
+| `replaced_by` | `UUID` | yes | — | The newer version that replaced this row. |
+| `replaced_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When it was replaced. |
 
 **Indexes**
 
@@ -429,7 +443,11 @@ One row per row of an uploaded file, extracted into the canonical fields with th
 - `ix_sanction_records_state_dob` on sanction_records.state, sanction_records.dob
 - `ix_sanction_records_trigram_key_gin` on sanction_records.trigram_key (gin)
 - `ix_sanction_records_zip5_last_name` on sanction_records.zip5, sanction_records.last_name
-- `uq_sanction_records_record_id` on sanction_records.record_id (unique)
+- `ix_sanction_records_current_ordinal` on sanction_records.ordinal (partial: `is_current`)
+- `ix_sanction_records_record_id` on sanction_records.record_id
+- `ix_sanction_records_sanction_type` on sanction_records.sanction_type
+- `uq_sanction_records_current_identity` on coalesce(source_authority, ''), record_id (unique; partial: `is_current`). One current version per identity.
+- `uq_sanction_records_file_id_record_id` on sanction_records.file_id, sanction_records.record_id (unique)
 
 ### `scoring_configs`
 

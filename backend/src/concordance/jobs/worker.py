@@ -213,7 +213,15 @@ class Worker:
             job_id=job_id,
             kind=kind,
             seconds=round(time.perf_counter() - started, 2),
-            **{k: v for k, v in (summary or {}).items() if not isinstance(v, (dict, list))},
+            # Namespaced: a handler's summary can carry keys of its own called
+            # `seconds` or `kind`, and a clash is a TypeError here - after the
+            # work committed and before the job is marked done, which left
+            # finished runs looking stuck in RUNNING.
+            **{
+                f"result_{k}": v
+                for k, v in (summary or {}).items()
+                if not isinstance(v, (dict, list))
+            },
         )
         self._finish(job_id)
 

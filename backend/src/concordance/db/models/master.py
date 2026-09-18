@@ -252,8 +252,33 @@ class SanctionRecord(
     source_authority: Mapped[str | None] = mapped_column(String(100))
     ordinal: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    #: Versioning. A record's identity is `(source_authority, record_id)`, and
+    #: an upload that changes a known record inserts a new row rather than
+    #: editing this one: the old row is what earlier runs were decided against,
+    #: and replaying them needs it exactly as it was. Exactly one version per
+    #: identity is current, which the partial unique index below enforces.
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    replaced_by: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("sanction_records.id", ondelete="SET NULL")
+    )
+    replaced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     __table_args__ = (
-        Index("uq_sanction_records_record_id", "record_id", unique=True),
+        Index("ix_sanction_records_record_id", "record_id"),
+        Index(
+            "uq_sanction_records_current_identity",
+            text("coalesce(source_authority, '')"),
+            "record_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
+        Index(
+            "ix_sanction_records_current_ordinal",
+            "ordinal",
+            postgresql_where=text("is_current"),
+        ),
+        Index("uq_sanction_records_file_id_record_id", "file_id", "record_id", unique=True),
+        Index("ix_sanction_records_sanction_type", "sanction_type"),
         Index("ix_sanction_records_file_id", "file_id"),
         Index("ix_sanction_records_npi", "npi"),
         Index("ix_sanction_records_name_norm", "name_norm"),

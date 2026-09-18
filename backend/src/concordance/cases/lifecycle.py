@@ -28,10 +28,13 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from concordance.audit import service as audit
+from concordance.audit.service import Actor
 from concordance.db.enums import CaseStatus
 from concordance.db.models import Case
 from concordance.db.repositories.audit import AuditRepository
 from concordance.db.repositories.cases import CaseRepository
+from concordance.errors import ConflictError, InvalidError, NotFoundError
 from concordance.logging_setup import get_logger
 
 log = get_logger("cases.lifecycle")
@@ -98,16 +101,32 @@ def open_case(
     duration_months: int = 3,
     created_by: uuid.UUID | None = None,
     start: date | None = None,
+    actor: Actor | None = None,
+    strict: bool = False,
 ) -> Case:
     """Open a review case, or return the active one that already exists.
 
     The partial unique index allows one active case per provider and record, so
     a duplicate approval must find the existing case rather than collide with
-    it - the idempotency Stage 7 needs on `approve`.
+    it - the idempotency Stage 7 needs on `approve`. `strict` refuses instead,
+    for `POST /cases`, where asking for a second live case is the caller's
+    mistake and should be reported as one.
     """
+    if duration_months < 1:
+        raise InvalidError(
+            "a case lasts at least one month", details={"duration_months": "must be >= 1"}
+        )
+    if actor is not None:
+        created_by = actor.user_id
     cases = CaseRepository(session)
     existing = cases.active_for(provider_id, sanction_record_id)
     if existing is not None:
+        if strict:
+            raise ConflictError(
+                f"case {existing.case_number} is already active for this provider and record",
+                code="case_already_active",
+                details={"case_id": str(existing.id), "case_number": existing.case_number},
+            )
         return existing
 
     begin = start or datetime.now(UTC).date()
@@ -124,17 +143,56 @@ def open_case(
     )
     session.add(case)
     session.flush()
-    AuditRepository(session).record(
-        action="case.opened",
+    if actor is None:
+        # A caller that passed only a user id: the user did it, in a role this
+        # function was not told. A caller that passed nothing: the system did.
+        actor = Actor(user_id=created_by, role="user") if created_by else Actor.system()
+    audit.record(
+        session,
+        actor,
+        "case.opened",
         entity_type="case",
-        entity_id=str(case.id),
-        actor_user_id=created_by,
-        actor_role=None if created_by else SYSTEM_ACTOR,
+        entity_id=case.id,
         after={
             "case_number": case.case_number,
             "provider_id": provider_id,
-            "end_date": case.end_date.isoformat(),
+            "sanction_record_id": sanction_record_id,
+            "match_result_id": match_result_id,
+            "start_date": case.start_date,
+            "end_date": case.end_date,
+            "duration_months": duration_months,
         },
+    )
+    return case
+
+
+def close_case(session: Session, actor: Actor, case_id: uuid.UUID, *, reason: str) -> Case:
+    """Close an active case, with a reason. Admin-only is enforced by the caller."""
+    case = session.get(Case, case_id, with_for_update=True)
+    if case is None:
+        raise NotFoundError(f"no case {case_id}")
+    if case.status != CaseStatus.ACTIVE:
+        raise ConflictError(
+            f"case {case.case_number} is {case.status}; only an active case can be closed",
+            code="case_not_active",
+            details={"status": case.status},
+        )
+    reason = reason.strip()
+    if not reason:
+        raise InvalidError("say why the case is being closed", details={"reason": "required"})
+
+    before = {"status": case.status, "conflict_flag": case.conflict_flag}
+    case.status = str(CaseStatus.CLOSED)
+    case.closed_by = actor.user_id
+    case.close_reason = reason
+    audit.record(
+        session,
+        actor,
+        "case.closed",
+        entity_type="case",
+        entity_id=case.id,
+        before=before,
+        after={"status": case.status, "reason": reason},
     )
     return case
 
@@ -161,6 +219,7 @@ def _days_in_month(year: int, month: int) -> int:
 __all__ = [
     "SYSTEM_ACTOR",
     "ExpiryReport",
+    "close_case",
     "expire_cases",
     "next_case_number",
     "open_case",

@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     JWT_ACCESS_TTL: int = 900  # Stage 7, seconds
     JWT_REFRESH_TTL: int = 1_209_600  # Stage 7, seconds
     DEFAULT_CASE_MONTHS: int = 3  # Stage 7
+    #: Comma-separated origins the browser may call the API from. Not a
+    #: wildcard: with credentials allowed, a wildcard would let any page spend
+    #: a logged-in user's token.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    #: Largest sanction workbook accepted, in bytes. The monthly LEIE file is
+    #: about 12 MB as xlsx; the ceiling leaves room for it and refuses the rest
+    #: before it is read into memory.
+    MAX_UPLOAD_BYTES: int = Field(default=25 * 1024 * 1024, ge=1024)
+    #: Data rows accepted from one file. Counted while reading, so an oversized
+    #: file is refused at the first row past the cap.
+    MAX_UPLOAD_ROWS: int = Field(default=100_000, ge=1)
 
     # --- Stage 4: the LLM layer -------------------------------------------
     OPENROUTER_API_KEY: str | None = None

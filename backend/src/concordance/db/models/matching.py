@@ -133,6 +133,9 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
     #: cost panel, where binary rounding error accumulates visibly.
     llm_cost_usd: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, server_default="0")
     error: Mapped[str | None] = mapped_column(Text)
+    #: The queue row that executes this run, when it was started through the
+    #: API. A run started from the CLI has none.
+    job_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -142,6 +145,18 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
         check_values("strategy", EvalStrategy, name="run_strategy_valid"),
         Index("ix_reconciliation_runs_status", "status"),
         Index("ix_reconciliation_runs_file_id", "file_id"),
+        Index("ix_reconciliation_runs_created_at", "created_at"),
+        # One live run per scope. Two concurrent runs over the same file would
+        # each supersede the other's results in whatever order their chunks
+        # landed, and "current" would mean "whichever wrote last". A run with
+        # no file is the global scope, hence the coalesce: NULLs never collide
+        # in a unique index.
+        Index(
+            "uq_reconciliation_runs_live_scope",
+            text("coalesce(file_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+            postgresql_where=text("status IN ('QUEUED', 'RUNNING')"),
+        ),
     )
 
 
@@ -208,6 +223,13 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reviewer_comment: Mapped[str | None] = mapped_column(Text)
+    #: The provider a reviewer confirmed. Separate from `chosen_provider_id`,
+    #: which is what the engine said: on an ambiguous result that is only its
+    #: top-ranked candidate, the reviewer often picks another, and overwriting
+    #: the engine's answer would erase the evidence that they differed.
+    approved_provider_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("providers.provider_id", ondelete="SET NULL")
+    )
 
     #: Q5. Set when a later run re-decides the same record; the old row stays
     #: exactly as it was.
@@ -234,6 +256,25 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "review_status",
             postgresql_where=text("superseded_by IS NULL"),
         ),
+        # The review queue and the KPI tiles read current results by decision
+        # and status, and the confidence histogram by confidence. Partial, like
+        # the index above, because superseded rows are history and nothing on
+        # a dashboard counts them.
+        Index(
+            "ix_match_results_current_decision",
+            "decision",
+            "review_status",
+            postgresql_where=text("superseded_by IS NULL"),
+        ),
+        # Descending with nulls last, because that is the queue's default sort:
+        # most confident first, and a result with no confidence at all (no
+        # candidates) at the bottom. An ascending sort walks it backwards.
+        Index(
+            "ix_match_results_current_confidence",
+            text("calibrated_confidence DESC NULLS LAST"),
+            postgresql_where=text("superseded_by IS NULL"),
+        ),
+        Index("ix_match_results_created_at", "created_at"),
     )
 
 

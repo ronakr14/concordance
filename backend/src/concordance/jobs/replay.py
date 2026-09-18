@@ -170,6 +170,11 @@ def replay(
         chunk_size=request.chunk_size,
         with_truth=False,
         show_progress=show_progress,
+        # The same scope the run read. A file's rows never change, so a
+        # file-scoped run stays replayable after newer uploads; a global run
+        # read "every current version", and a newer upload moves that - which
+        # the hash comparison below reports as the drift it is.
+        file_id=request.file_id,
     )
 
     provider_hash = stream.store.snapshot_hash()

@@ -1,1 +1,1 @@
-"""auth — filled in at its stage; see docs/PLAN.md."""
+"""Passwords, tokens, and the rules for who may do what."""

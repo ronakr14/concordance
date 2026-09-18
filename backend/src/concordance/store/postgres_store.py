@@ -18,6 +18,7 @@ Parquet row had, which is what makes the two generators comparable at all.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, cast
 
@@ -118,10 +119,22 @@ class PostgresRecordStore:
     Takes a `Session` and never opens its own - the caller owns the transaction,
     which is what lets a reconciliation run read the same snapshot the run row
     claims it read.
+
+    **The sanction side has a scope.** With a `file_id`, it is that file's rows
+    and nothing else - a fixed set, because an uploaded file's rows are never
+    edited, so a run over it stays replayable for good. Without one, it is the
+    current version of every record: what "reconcile everything" means once an
+    upload can replace a record with a newer version of itself.
     """
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, file_id: uuid.UUID | None = None) -> None:
         self.session = session
+        self.file_id = file_id
+
+    def _scoped(self, stmt: Any) -> Any:
+        if self.file_id is not None:
+            return stmt.where(SanctionRow.file_id == self.file_id)
+        return stmt.where(SanctionRow.is_current.is_(True))
 
     # -- RecordStore ------------------------------------------------------
     def all_providers(self) -> Iterable[DomainProvider]:
@@ -143,8 +156,8 @@ class PostgresRecordStore:
         return None if row is None else _to_provider(row)
 
     def sanction_batch(self, offset: int, limit: int) -> list[DomainSanction]:
-        stmt = select(SanctionRow).order_by(SanctionRow.ordinal).offset(offset).limit(limit)
-        return [_to_sanction(r) for r in self.session.scalars(stmt)]
+        stmt = self._scoped(select(SanctionRow)).order_by(SanctionRow.ordinal)
+        return [_to_sanction(r) for r in self.session.scalars(stmt.offset(offset).limit(limit))]
 
     def provider_count(self) -> int:
         from sqlalchemy import func
@@ -162,7 +175,8 @@ class PostgresRecordStore:
     def sanction_count(self) -> int:
         from sqlalchemy import func
 
-        return int(self.session.scalar(select(func.count()).select_from(SanctionRow)) or 0)
+        stmt = self._scoped(select(func.count()).select_from(SanctionRow))
+        return int(self.session.scalar(stmt) or 0)
 
     def sanction_snapshot_hash(self) -> str:
         """Must equal `ParquetRecordStore.sanction_snapshot_hash()`.
@@ -177,10 +191,16 @@ class PostgresRecordStore:
             else getattr(SanctionRow, name)
             for name in SANCTION_HASH_FIELDS
         ]
-        return combined_hash(self._paged(columns, SanctionRow.record_id), SANCTION_HASH_FIELDS)
+        # Keyed by the row id, not the business key: two authorities may use
+        # the same record key, and keyset paging over a non-unique key skips
+        # rows at page boundaries. The hash sorts digests, so the key used to
+        # page cannot change it.
+        return combined_hash(
+            self._paged(columns, SanctionRow.id, scoped=True), SANCTION_HASH_FIELDS
+        )
 
     def _paged(
-        self, columns: list[Any], key: Any, page: int = HASH_PAGE
+        self, columns: list[Any], key: Any, page: int = HASH_PAGE, *, scoped: bool = False
     ) -> Iterator[Mapping[str, Any]]:
         """The hash inputs, one short statement at a time.
 
@@ -194,6 +214,8 @@ class PostgresRecordStore:
         after: Any = None
         while True:
             stmt = select(key.label("_key"), *columns).order_by(key).limit(page)
+            if scoped:
+                stmt = self._scoped(stmt)
             if after is not None:
                 stmt = stmt.where(key > after)
             def read(statement: Any = stmt) -> list[Mapping[str, Any]]:
@@ -206,13 +228,15 @@ class PostgresRecordStore:
             after = rows[-1]["_key"]
 
     def all_sanctions(self) -> list[DomainSanction]:
-        stmt = select(SanctionRow).order_by(SanctionRow.ordinal)
+        stmt = self._scoped(select(SanctionRow)).order_by(SanctionRow.ordinal)
         return [_to_sanction(r) for r in self.session.scalars(stmt)]
 
     def ground_truth(self) -> dict[str, GroundTruth]:
         """Keyed by the *business* record id, as the Parquet store keys it."""
-        stmt = select(GroundTruthRow, SanctionRow.record_id).join(
-            SanctionRow, SanctionRow.id == GroundTruthRow.sanction_record_id
+        stmt = self._scoped(
+            select(GroundTruthRow, SanctionRow.record_id).join(
+                SanctionRow, SanctionRow.id == GroundTruthRow.sanction_record_id
+            )
         )
         out: dict[str, GroundTruth] = {}
         for truth, record_id in self.session.execute(stmt):

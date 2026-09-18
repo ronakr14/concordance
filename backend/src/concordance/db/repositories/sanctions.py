@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from concordance.db.enums import SanctionFileStatus
@@ -70,6 +70,54 @@ class SanctionRepository:
             .order_by(SanctionRecord.ordinal)
         )
         return paginate(self.session, stmt, limit, offset)
+
+    def search_records(
+        self,
+        *,
+        q: str | None = None,
+        file_id: uuid.UUID | None = None,
+        source_authority: str | None = None,
+        state: str | None = None,
+        sanction_type: str | None = None,
+        is_organization: bool | None = None,
+        include_history: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> Page[SanctionRecord]:
+        """The sanctions list: current versions only, unless history is asked for.
+
+        `q` matches the normalized name, the record key and the NPI. The name
+        is matched on its normalized form - the same folding the engine uses -
+        so the list and the results agree about who is who.
+        """
+        stmt = select(SanctionRecord).order_by(SanctionRecord.ordinal, SanctionRecord.id)
+        if not include_history:
+            stmt = stmt.where(SanctionRecord.is_current.is_(True))
+        if file_id is not None:
+            stmt = stmt.where(SanctionRecord.file_id == file_id)
+        if source_authority:
+            stmt = stmt.where(SanctionRecord.source_authority == source_authority)
+        if state:
+            stmt = stmt.where(SanctionRecord.state == state.upper())
+        if sanction_type:
+            stmt = stmt.where(SanctionRecord.sanction_type == sanction_type)
+        if is_organization is not None:
+            stmt = stmt.where(SanctionRecord.is_organization.is_(is_organization))
+        if q and q.strip():
+            text = q.strip()
+            stmt = stmt.where(
+                or_(
+                    SanctionRecord.name_norm.contains(text.upper(), autoescape=True),
+                    SanctionRecord.record_id.icontains(text, autoescape=True),
+                    SanctionRecord.npi.contains(text, autoescape=True),
+                )
+            )
+        return paginate(self.session, stmt, limit, offset)
+
+    def get_record_row(self, row_id: uuid.UUID) -> SanctionRecord | None:
+        """By surrogate id. `get_record` takes the business key, which is not unique
+        once a record has more than one version."""
+        return self.session.get(SanctionRecord, row_id)
 
     def count(self) -> int:
         from sqlalchemy import func

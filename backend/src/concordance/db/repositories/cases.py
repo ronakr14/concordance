@@ -38,14 +38,24 @@ class CaseRepository:
         *,
         status: str | None = None,
         conflicts_only: bool = False,
+        provider_id: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> Page[Case]:
-        stmt = select(Case).order_by(Case.created_at.desc())
+        """Cases, newest first. The date range is over `start_date`."""
+        stmt = select(Case).order_by(Case.created_at.desc(), Case.id)
         if status:
             stmt = stmt.where(Case.status == status)
         if conflicts_only:
             stmt = stmt.where(Case.conflict_flag.is_(True))
+        if provider_id:
+            stmt = stmt.where(Case.provider_id == provider_id)
+        if date_from is not None:
+            stmt = stmt.where(Case.start_date >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Case.start_date <= date_to)
         return paginate(self.session, stmt, limit, offset)
 
     def due_for_expiry(self, today: date) -> list[Case]:

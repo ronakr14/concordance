@@ -57,9 +57,15 @@ def configure_logging(level: str = "INFO", json_logs: bool = False) -> None:
     )
 
 
-def new_correlation_id() -> str:
-    """Bind a fresh correlation id for this command run and return it."""
-    cid = uuid.uuid4().hex[:12]
+def new_correlation_id(existing: str | None = None) -> str:
+    """Bind a correlation id for this run or request, and return it.
+
+    `existing` lets an HTTP request adopt an `X-Request-Id` a caller supplied,
+    so a trace that starts in the browser stays one trace. It is truncated
+    rather than trusted wholesale: the value reaches the log and the audit
+    table, and neither wants an unbounded string from a client.
+    """
+    cid = existing.strip()[:64] if existing else uuid.uuid4().hex[:12]
     correlation_id.set(cid)
     return cid
 

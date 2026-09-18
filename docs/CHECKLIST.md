@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `6 / 11 stages complete` · a portfolio artifact exists from the end of Stage 3.
+Progress: `7 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -942,136 +942,136 @@ Design notes and the measured numbers live in `docs/orchestration.md`.
 
 ### Auth
 
-- [ ] argon2 password hashing with sane parameters
-- [ ] `POST /auth/register` (admin-only in production; open in dev, gated by `ENV`)
-- [ ] `POST /auth/login` → access + refresh tokens
-- [ ] `POST /auth/refresh` → rotates the refresh token, revokes the old ⭐
-- [ ] `POST /auth/logout` → revokes the refresh token
-- [ ] `GET /auth/me`
-- [ ] JWT signed with `JWT_SECRET`, short access TTL, longer refresh TTL
-- [ ] `get_current_user` dependency
-- [ ] `require_role("admin")` dependency ⭐
-- [ ] Inactive users rejected
-- [ ] Password strength validation on register
-- [ ] Generic error on bad credentials — never reveal whether the email exists ⭐
+- [x] argon2 password hashing with sane parameters
+- [x] `POST /auth/register` (admin-only in production; open in dev, gated by `ENV`)
+- [x] `POST /auth/login` → access + refresh tokens
+- [x] `POST /auth/refresh` → rotates the refresh token, revokes the old ⭐
+- [x] `POST /auth/logout` → revokes the refresh token
+- [x] `GET /auth/me`
+- [x] JWT signed with `JWT_SECRET`, short access TTL, longer refresh TTL
+- [x] `get_current_user` dependency
+- [x] `require_role("admin")` dependency ⭐
+- [x] Inactive users rejected
+- [x] Password strength validation on register
+- [x] Generic error on bad credentials — never reveal whether the email exists ⭐
 
 ### Sanctions — two-phase upload (Q1) ⭐
 
-- [ ] `POST /sanctions/upload` — multipart Excel; **inspects only, does not ingest** ⭐
-- [ ] Inspection returns detected columns, sample rows, and a proposed canonical mapping ⭐
-- [ ] Proposal reuses the stored default mapping when the source authority is recognized ⭐
-- [ ] Reject oversized files; cap row count
-- [ ] Compute and store the file `sha256`
-- [ ] Byte-identical re-upload (same sha256) rejected with 409 (Q5) ⭐
-- [ ] Persist the file through the storage backend; store `storage_uri`; status `INSPECTED`
-- [ ] `POST /sanctions/upload/{id}/commit` — applies a confirmed mapping and ingests ⭐
-- [ ] Commit validates the mapping covers every required canonical field; precise per-field error otherwise ⭐
-- [ ] `sanction_files.mapping_id` recorded so the file's interpretation is replayable ⭐
-- [ ] Parse rows, persist `sanction_records` with `raw` JSONB preserved — including unmapped columns ⭐
-- [ ] Populate normalized columns at write time, per record type (individual vs organization)
-- [ ] Return the file id and row count; status `COMMITTED`
-- [ ] `GET /sanctions` — paginated, filterable
-- [ ] `GET /sanctions/{id}`
-- [ ] `GET /sanctions/files` — upload history with lineage and the mapping used
-- [ ] `GET /column-mappings` / `POST /column-mappings` / `PUT /column-mappings/{id}`
-- [ ] Setting a mapping as default for a source authority
+- [x] `POST /sanctions/upload` — multipart Excel; **inspects only, does not ingest** ⭐
+- [x] Inspection returns detected columns, sample rows, and a proposed canonical mapping ⭐
+- [x] Proposal reuses the stored default mapping when the source authority is recognized ⭐ — also recognises the source from its headers alone when no authority is named
+- [x] Reject oversized files; cap row count
+- [x] Compute and store the file `sha256`
+- [x] Byte-identical re-upload (same sha256) rejected with 409 (Q5) ⭐
+- [x] Persist the file through the storage backend; store `storage_uri`; status `INSPECTED`
+- [x] `POST /sanctions/upload/{id}/commit` — applies a confirmed mapping and ingests ⭐
+- [x] Commit validates the mapping covers every required canonical field; precise per-field error otherwise ⭐ — required is deliberately just a name (`last_name` or `organization_name`); an unmapped record key is derived from content, because the real LEIE file has none
+- [x] `sanction_files.mapping_id` recorded so the file's interpretation is replayable ⭐
+- [x] Parse rows, persist `sanction_records` with `raw` JSONB preserved — including unmapped columns ⭐ — an upload that changes a known record inserts a new **version** and retires the old one (`is_current`, `replaced_by`), so earlier runs stay replayable
+- [x] Populate normalized columns at write time, per record type (individual vs organization)
+- [x] Return the file id and row count; status `COMMITTED`
+- [x] `GET /sanctions` — paginated, filterable
+- [x] `GET /sanctions/{id}`
+- [x] `GET /sanctions/files` — upload history with lineage and the mapping used
+- [x] `GET /column-mappings` / `POST /column-mappings` / `PUT /column-mappings/{id}`
+- [x] Setting a mapping as default for a source authority
 
 ### Reconciliation
 
-- [ ] `POST /reconciliation/run` — enqueues a job, returns the run id immediately ⭐
-- [ ] Accepts an optional `scoring_config_id` and `file_id`
-- [ ] `GET /reconciliation/runs` — list with status
-- [ ] `GET /reconciliation/runs/{id}` — status, progress, counts, cost
-- [ ] `POST /reconciliation/runs/{id}/cancel`
-- [ ] Reject a second concurrent run on the same file with 409
+- [x] `POST /reconciliation/run` — enqueues a job, returns the run id immediately ⭐
+- [x] Accepts an optional `scoring_config_id` and `file_id`
+- [x] `GET /reconciliation/runs` — list with status
+- [x] `GET /reconciliation/runs/{id}` — status, progress, counts, cost
+- [x] `POST /reconciliation/runs/{id}/cancel`
+- [x] Reject a second concurrent run on the same file with 409 — enforced twice: a readable 409, and a partial unique index for the race
 
 ### Matches
 
-- [ ] `GET /matches` — paginated
-- [ ] Filter: confidence range
-- [ ] Filter: decision status
-- [ ] Filter: review status
-- [ ] Filter: state
-- [ ] Filter: sanction type
-- [ ] Filter: date range
-- [ ] Filter: run id
-- [ ] Filter: conflict flag (Q5) ⭐
-- [ ] Filter: record type (individual / organization) (Q2)
-- [ ] Superseded results excluded by default; `include_superseded=true` returns history (Q5) ⭐
-- [ ] Sort: confidence, date
-- [ ] `GET /matches/{id}` — full detail: sanction record, all candidates, field levels, field weight contributions, AI explanation, evidence cited ⭐
-- [ ] `POST /matches/{id}/approve` — admin only
-- [ ] `POST /matches/{id}/reject` — analyst or admin, with comment
-- [ ] `POST /matches/{id}/escalate` — analyst, with comment
-- [ ] **Duplicate approval returns 409 and does not create a second case** ⭐
-- [ ] Approve/reject writes a `feedback_events` row with the comparison vector ⭐
-- [ ] Approving a match with no `chosen_provider_id` is rejected with a clear error
+- [x] `GET /matches` — paginated
+- [x] Filter: confidence range
+- [x] Filter: decision status
+- [x] Filter: review status
+- [x] Filter: state
+- [x] Filter: sanction type
+- [x] Filter: date range
+- [x] Filter: run id
+- [x] Filter: conflict flag (Q5) ⭐
+- [x] Filter: record type (individual / organization) (Q2)
+- [x] Superseded results excluded by default; `include_superseded=true` returns history (Q5) ⭐
+- [x] Sort: confidence, date
+- [x] `GET /matches/{id}` — full detail: sanction record, all candidates, field levels, field weight contributions, AI explanation, evidence cited ⭐
+- [x] `POST /matches/{id}/approve` — admin only
+- [x] `POST /matches/{id}/reject` — analyst or admin, with comment
+- [x] `POST /matches/{id}/escalate` — analyst, with comment
+- [x] **Duplicate approval returns 409 and does not create a second case** ⭐
+- [x] Approve/reject writes a `feedback_events` row with the comparison vector ⭐
+- [x] Approving a match with no `chosen_provider_id` is rejected with a clear error — and an ambiguous one needs an explicit `provider_id` from its own candidates; the reviewer's pick goes in `approved_provider_id`, never over the engine's answer
 
 ### Cases
 
-- [ ] `POST /cases` — created from an approved match; `duration_months` defaults to 3, configurable ⭐
-- [ ] `end_date` derived from `start_date + duration_months`
-- [ ] `case_number` generated, human-readable, unique
-- [ ] Reject creating a second `ACTIVE` case for the same provider+sanction pair
-- [ ] `GET /cases` — filter by status, provider, date range; paginated
-- [ ] `GET /cases/{id}` — detail including approval metadata and linked match
-- [ ] `GET /cases/{id}/audit` — audit history for that case
-- [ ] `POST /cases/{id}/close` — admin only, requires a reason
+- [x] `POST /cases` — created from an approved match; `duration_months` defaults to 3, configurable ⭐ — approval itself opens the case in the same transaction; `POST /cases` re-opens after a case closed or expired
+- [x] `end_date` derived from `start_date + duration_months`
+- [x] `case_number` generated, human-readable, unique
+- [x] Reject creating a second `ACTIVE` case for the same provider+sanction pair
+- [x] `GET /cases` — filter by status, provider, date range; paginated
+- [x] `GET /cases/{id}` — detail including approval metadata and linked match
+- [x] `GET /cases/{id}/audit` — audit history for that case
+- [x] `POST /cases/{id}/close` — admin only, requires a reason
 
 ### Audit
 
-- [ ] Audit middleware or service writing every mutation ⭐
-- [ ] Actions covered: upload, reconciliation run, AI decision, match view, approve, reject, escalate, case create, case close, case expire, login, retune ⭐
-- [ ] `before` and `after` JSONB captured on state changes
-- [ ] `request_id`, actor id, actor role, IP recorded
-- [ ] `GET /audit` — filter by entity type, entity id, actor, action, date range; paginated
-- [ ] Audit writes never block the primary transaction from committing incorrectly — same transaction, so a failed audit fails the action ⭐
+- [x] Audit middleware or service writing every mutation ⭐ — a service (`audit/service.py`), in the caller's transaction; a middleware cannot see before/after state
+- [x] Actions covered: upload, reconciliation run, AI decision, match view, approve, reject, escalate, case create, case close, case expire, login, retune ⭐
+- [x] `before` and `after` JSONB captured on state changes
+- [x] `request_id`, actor id, actor role, IP recorded
+- [x] `GET /audit` — filter by entity type, entity id, actor, action, date range; paginated
+- [x] Audit writes never block the primary transaction from committing incorrectly — same transaction, so a failed audit fails the action ⭐
 
 ### Stats
 
-- [ ] `GET /stats/kpis` — providers, sanctions, matched, unmatched, ambiguous, pending review, approved, cases created ⭐
-- [ ] `GET /stats/confidence-distribution`
-- [ ] `GET /stats/state-distribution`
-- [ ] `GET /stats/case-status`
-- [ ] `GET /stats/reconciliation-volume` — time series
-- [ ] All stats queries indexed; none do a full table scan at 50k rows
+- [x] `GET /stats/kpis` — providers, sanctions, matched, unmatched, ambiguous, pending review, approved, cases created ⭐
+- [x] `GET /stats/confidence-distribution`
+- [x] `GET /stats/state-distribution`
+- [x] `GET /stats/case-status`
+- [x] `GET /stats/reconciliation-volume` — time series
+- [x] All stats queries indexed; none do a full table scan at 50k rows — checked with `enable_seqscan=off`; the one exception is the current-record count, which counts nearly the whole table by definition
 
 ### Cross-cutting
 
-- [ ] Consistent error envelope on every endpoint
-- [ ] Pydantic request and response schemas for everything — no bare dicts
-- [ ] Pagination envelope shared: `{items, total, limit, offset}`
-- [ ] CORS configured for the dev frontend origin only
-- [ ] Rate limiting on `/auth/login` ⭐
-- [ ] OpenAPI schema generates cleanly with correct types and examples
-- [ ] No secret ever returned in a response body
+- [x] Consistent error envelope on every endpoint
+- [x] Pydantic request and response schemas for everything — no bare dicts
+- [x] Pagination envelope shared: `{items, total, limit, offset}`
+- [x] CORS configured for the dev frontend origin only
+- [x] Rate limiting on `/auth/login` ⭐
+- [ ] OpenAPI schema generates cleanly with correct types and examples — generates cleanly with unique operation ids and typed models; examples exist only on the upload/commit bodies
+- [x] No secret ever returned in a response body
 
 ### Tests
 
-- [ ] Happy path: inspect → map → commit → run → list matches → approve → case created
-- [ ] Invalid Excel: missing columns, wrong types, empty file
-- [ ] Commit with an incomplete mapping is rejected with a per-field error (Q1)
-- [ ] Byte-identical re-upload returns 409 (Q5)
-- [ ] Updated file from the same source is accepted and creates a new run (Q5)
-- [ ] Re-run supersedes prior results and leaves the active case untouched but flagged (Q5) ⭐
-- [ ] Organization sanction record routes to the organization model and matches correctly (Q2) ⭐
-- [ ] Duplicate approval → 409 ⭐
-- [ ] Ambiguous match cannot be approved without an explicit provider choice
-- [ ] RBAC: analyst denied on approve and case-close
-- [ ] Unauthenticated request → 401
-- [ ] Expired token → 401
-- [ ] Refresh rotation invalidates the old token
-- [ ] Case creation with a non-default duration
-- [ ] Case expiry transition
-- [ ] Audit row written for every mutating test above ⭐
-- [ ] Pagination boundary tests
+- [x] Happy path: inspect → map → commit → run → list matches → approve → case created
+- [x] Invalid Excel: missing columns, wrong types, empty file
+- [x] Commit with an incomplete mapping is rejected with a per-field error (Q1)
+- [x] Byte-identical re-upload returns 409 (Q5)
+- [x] Updated file from the same source is accepted and creates a new run (Q5)
+- [x] Re-run supersedes prior results and leaves the active case untouched but flagged (Q5) ⭐
+- [x] Organization sanction record routes to the organization model and matches correctly (Q2) ⭐
+- [x] Duplicate approval → 409 ⭐
+- [x] Ambiguous match cannot be approved without an explicit provider choice
+- [x] RBAC: analyst denied on approve and case-close
+- [x] Unauthenticated request → 401
+- [x] Expired token → 401
+- [x] Refresh rotation invalidates the old token
+- [x] Case creation with a non-default duration
+- [x] Case expiry transition
+- [x] Audit row written for every mutating test above ⭐
+- [x] Pagination boundary tests
 
 ### GATE 7
-- [ ] Full pytest suite green
-- [ ] `docker compose up` → OpenAPI docs load at `/docs` with no schema errors
-- [ ] Every endpoint in this stage exercised by at least one test
-- [ ] Duplicate-approval 409 demonstrated ⭐
-- [ ] RBAC denial demonstrated ⭐
+- [x] Full pytest suite green — unit and integration, against the hosted database
+- [ ] `docker compose up` → OpenAPI docs load at `/docs` with no schema errors — deferred to Stage 10: there is no compose file yet and Docker is not installed. `create_app().openapi()` builds in the unit suite
+- [x] Every endpoint in this stage exercised by at least one test
+- [x] Duplicate-approval 409 demonstrated ⭐ — `test_approval_is_admin_only_opens_a_case_and_is_idempotent`; the 409 names the case the first approval opened
+- [x] RBAC denial demonstrated ⭐ — against the real database, and without one: every admin route refuses an analyst before its handler runs
 
 ---
 

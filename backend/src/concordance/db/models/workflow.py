@@ -91,6 +91,9 @@ class Case(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_where=text("status = 'ACTIVE'"),
         ),
         Index("ix_cases_status_end_date", "status", "end_date"),
+        Index("ix_cases_provider_id", "provider_id"),
+        Index("ix_cases_match_result_id", "match_result_id"),
+        Index("ix_cases_created_at", "created_at"),
         Index("ix_cases_conflict_flag", "conflict_flag", postgresql_where=text("conflict_flag")),
     )
 
@@ -122,6 +125,7 @@ class AuditLog(CreatedAtMixin, Base):
         Index("ix_audit_logs_entity_type_entity_id", "entity_type", "entity_id"),
         Index("ix_audit_logs_created_at", text("created_at DESC")),
         Index("ix_audit_logs_actor_user_id", "actor_user_id"),
+        Index("ix_audit_logs_action", "action"),
     )
 
 

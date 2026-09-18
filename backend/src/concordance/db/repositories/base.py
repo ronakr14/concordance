@@ -72,10 +72,27 @@ def paginate(
     return Page(items=items, total=total, limit=size, offset=start)
 
 
+def paginate_rows(
+    session: Session, stmt: Select[Any], limit: int | None, offset: int = 0
+) -> Page[Any]:
+    """`paginate` for a statement that selects several entities or columns.
+
+    `paginate` reads the first column of each row, which is right for a single
+    entity and drops everything else from a join. This returns the rows whole.
+    """
+    size = clamp_limit(limit)
+    start = max(0, offset)
+    counted = select(func.count()).select_from(stmt.order_by(None).subquery())
+    total = int(session.scalar(counted) or 0)
+    items = list(session.execute(stmt.limit(size).offset(start)).all())
+    return Page(items=items, total=total, limit=size, offset=start)
+
+
 __all__ = [
     "DEFAULT_PAGE_SIZE",
     "MAX_PAGE_SIZE",
     "Page",
     "clamp_limit",
     "paginate",
+    "paginate_rows",
 ]

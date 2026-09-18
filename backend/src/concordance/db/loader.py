@@ -147,7 +147,7 @@ class LoadReport:
         }
 
 
-def _normalized_columns(normalized: NormalizedRecord) -> tuple[str, str, str, str, str, str]:
+def normalized_columns(normalized: NormalizedRecord) -> tuple[str, str, str, str, str, str]:
     """The six persisted derivations, in table order."""
     address = normalized.address
     name_norm = normalized.org_name_norm if normalized.is_organization else normalized.name_norm
@@ -175,7 +175,7 @@ def _provider_rows(
 
     for ordinal, provider in enumerate(store.all_providers()):
         normalized = normalize_provider(provider)
-        name_norm, sorted_norm, phonetic, addr, zip5, trigram = _normalized_columns(normalized)
+        name_norm, sorted_norm, phonetic, addr, zip5, trigram = normalized_columns(normalized)
         cluster_id, cluster_role = clusters.get(provider.provider_id, (None, None))
         row = (
             uuid.uuid4(),
@@ -220,7 +220,7 @@ def _sanction_rows(store: ParquetRecordStore) -> Iterator[tuple[tuple[Any, ...],
     """One sanction row, plus the business record id its ground truth is keyed by."""
     for ordinal, record in enumerate(store.all_sanctions()):
         normalized = normalize_sanction(record)
-        name_norm, sorted_norm, phonetic, addr, zip5, trigram = _normalized_columns(normalized)
+        name_norm, sorted_norm, phonetic, addr, zip5, trigram = normalized_columns(normalized)
         row_id = uuid.uuid4()
         row = (
             row_id,
@@ -232,7 +232,7 @@ def _sanction_rows(store: ParquetRecordStore) -> Iterator[tuple[tuple[Any, ...],
             record.middle_name,
             record.last_name,
             record.suffix,
-            _as_date(record.dob),
+            as_date(record.dob),
             record.address_line1,
             record.address_line2,
             record.city,
@@ -270,7 +270,7 @@ def _clean_optional(value: Any) -> Any:
     return None if is_null(value) else value
 
 
-def _as_date(value: Any) -> Any:
+def as_date(value: Any) -> Any:
     """A sanction record's DOB is a string because it is frequently partial."""
     from datetime import date, datetime
 
@@ -286,7 +286,7 @@ def _as_date(value: Any) -> Any:
         return None
 
 
-def _copy(cursor: Any, table: str, columns: Sequence[str], rows: Sequence[tuple[Any, ...]]) -> int:
+def copy_rows(cursor: Any, table: str, columns: Sequence[str], rows: Sequence[tuple[Any, ...]]) -> int:
     if not rows:
         return 0
     cols = ", ".join(columns)
@@ -323,19 +323,19 @@ def load_dataset(engine: Engine, dataset: Path | str, *, truncate: bool = True) 
             batch.append(row)
             keys.extend(row_keys)
             if len(batch) >= COPY_BATCH:
-                report.providers += _copy(cursor, "providers", PROVIDER_COLUMNS, batch)
+                report.providers += copy_rows(cursor, "providers", PROVIDER_COLUMNS, batch)
                 batch.clear()
                 # Block keys carry a foreign key to `providers`, so they may
                 # only be written once the providers they name are in. A
                 # provider yields several keys, so flushing on the key buffer's
                 # own size would run ahead of the provider batch and violate
                 # the constraint. The two flushes are one operation.
-                report.block_keys += _copy(
+                report.block_keys += copy_rows(
                     cursor, "provider_block_keys", BLOCK_KEY_COLUMNS, keys
                 )
                 keys.clear()
-        report.providers += _copy(cursor, "providers", PROVIDER_COLUMNS, batch)
-        report.block_keys += _copy(cursor, "provider_block_keys", BLOCK_KEY_COLUMNS, keys)
+        report.providers += copy_rows(cursor, "providers", PROVIDER_COLUMNS, batch)
+        report.block_keys += copy_rows(cursor, "provider_block_keys", BLOCK_KEY_COLUMNS, keys)
         report.stage_seconds["providers"] = time.perf_counter() - mark
 
         mark = time.perf_counter()
@@ -345,9 +345,9 @@ def load_dataset(engine: Engine, dataset: Path | str, *, truncate: bool = True) 
             ids_by_record[record_id] = row[0]
             batch.append(row)
             if len(batch) >= COPY_BATCH:
-                report.sanctions += _copy(cursor, "sanction_records", SANCTION_COLUMNS, batch)
+                report.sanctions += copy_rows(cursor, "sanction_records", SANCTION_COLUMNS, batch)
                 batch.clear()
-        report.sanctions += _copy(cursor, "sanction_records", SANCTION_COLUMNS, batch)
+        report.sanctions += copy_rows(cursor, "sanction_records", SANCTION_COLUMNS, batch)
         report.stage_seconds["sanctions"] = time.perf_counter() - mark
 
         mark = time.perf_counter()
@@ -362,7 +362,7 @@ def load_dataset(engine: Engine, dataset: Path | str, *, truncate: bool = True) 
             for record_id, truth in store.ground_truth().items()
             if record_id in ids_by_record
         ]
-        report.ground_truth += _copy(cursor, "ground_truth", GROUND_TRUTH_COLUMNS, truth_rows)
+        report.ground_truth += copy_rows(cursor, "ground_truth", GROUND_TRUTH_COLUMNS, truth_rows)
         report.stage_seconds["ground_truth"] = time.perf_counter() - mark
 
         raw.commit()
@@ -396,5 +396,8 @@ __all__ = [
     "SANCTION_COLUMNS",
     "LoadReport",
     "analyze",
+    "as_date",
+    "copy_rows",
     "load_dataset",
+    "normalized_columns",
 ]
