@@ -34,10 +34,12 @@ run_app = typer.Typer(
     help="Reconciliation runs: start, replay, diff, inspect.", no_args_is_help=True
 )
 jobs_app = typer.Typer(help="The job queue and the worker.", no_args_is_help=True)
+api_app = typer.Typer(help="The HTTP API: serve it, or export its contract.", no_args_is_help=True)
 
 app.add_typer(data_app, name="data")
 app.add_typer(match_app, name="match")
 app.add_typer(llm_app, name="llm")
+app.add_typer(api_app, name="api")
 app.add_typer(db_app, name="db")
 app.add_typer(report_app, name="report")
 app.add_typer(run_app, name="run")
@@ -1230,6 +1232,43 @@ def _adjudicator_for(settings: Settings, strategy: str) -> Any:
             fg="yellow",
         )
     return adjudicator
+
+
+# --------------------------------------------------------------------------
+# api
+# --------------------------------------------------------------------------
+
+
+@api_app.command("serve")
+def api_serve(
+    host: Annotated[str, typer.Option(help="Interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port to bind.")] = 8000,
+    reload: Annotated[bool, typer.Option(help="Restart on source changes.")] = False,
+) -> None:
+    """Run the API under uvicorn."""
+    import uvicorn
+
+    uvicorn.run("concordance.api.app:app", host=host, port=port, reload=reload)
+
+
+@api_app.command("openapi")
+def api_openapi(
+    out: Annotated[Path, typer.Option(help="Where to write the schema.")] = Path("openapi.json"),
+) -> None:
+    """Write the OpenAPI schema the web client is generated from.
+
+    Built from the app factory, not fetched from a running server: the contract
+    is a property of the code, and regenerating the client should not need a
+    database or a process listening on a port.
+    """
+    import json
+
+    from concordance.api.app import create_app
+
+    schema = create_app(get_settings()).openapi()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    typer.echo(f"wrote {out} ({len(schema.get('paths', {}))} paths)")
 
 
 def main() -> None:

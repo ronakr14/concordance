@@ -20,7 +20,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from concordance import __version__
 from concordance.api.errors import install_error_handlers
 from concordance.api.middleware import LoginRateLimitMiddleware, RequestContextMiddleware
-from concordance.api.routers import audit_stats, cases, matches, reconciliation, sanctions
+from concordance.api.routers import (
+    audit_stats,
+    cases,
+    matches,
+    providers,
+    reconciliation,
+    sanctions,
+)
 from concordance.api.routers import auth as auth_router
 from concordance.api.schemas import HealthOut
 from concordance.config import Settings, get_settings
@@ -70,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reconciliation.router)
     app.include_router(matches.router)
     app.include_router(cases.router)
+    app.include_router(providers.router)
     app.include_router(audit_stats.audit_router)
     app.include_router(audit_stats.stats_router)
 

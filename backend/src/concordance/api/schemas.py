@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -49,15 +49,29 @@ class RegisterIn(ApiModel):
 class LoginIn(ApiModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=1024)
+    transport: Literal["body", "cookie"] = Field(
+        default="body",
+        description=(
+            "`cookie` sets the refresh token as an httpOnly cookie and leaves it out of "
+            "the body, so browser script never holds it. `body` is for the CLI and tests."
+        ),
+    )
 
 
 class RefreshIn(ApiModel):
-    refresh_token: str = Field(min_length=1, max_length=512)
+    refresh_token: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=512,
+        description="Omit to use the refresh cookie a `cookie` login set.",
+    )
 
 
 class TokenOut(ApiModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = Field(
+        default=None, description="Null when the token travels in the refresh cookie."
+    )
     token_type: str = "bearer"
     expires_at: datetime
 
@@ -264,10 +278,14 @@ class ProviderBriefOut(ApiModel):
     first_name: str | None
     middle_name: str | None
     last_name: str | None
+    suffix: str | None
     organization_name: str | None
+    dba_name: str | None
+    ein: str | None
     is_organization: bool
     dob: date | None
     address_line1: str | None
+    address_line2: str | None
     city: str | None
     state: str | None
     zip: str | None
@@ -332,6 +350,73 @@ class MatchDetailOut(MatchOut):
         default=None, description="Provider, model and prompt version of the adjudication call."
     )
     cases: list[CaseOut] = Field(default_factory=list)
+    conflicting_cases: list[CaseOut] = Field(
+        default_factory=list,
+        description="Live cases opened on an earlier result that this result disagrees with (Q5).",
+    )
+    band: BandOut | None = Field(
+        default=None, description="The thresholds of the scoring config that decided this result."
+    )
+    reviewed_by_email: str | None = None
+    adjudication: AdjudicationOut | None = Field(
+        default=None,
+        description="The LLM's answer, re-validated from the stored response, when an LLM decided.",
+    )
+
+
+class AdjudicationOut(ApiModel):
+    """What the adjudicator said, after the same checks the pipeline ran on it.
+
+    `evidence_cited` entries are `provider_id.field` - each names a field of a
+    candidate the model was shown, which the Investigation page highlights.
+    """
+
+    decision: str
+    provider_id: str | None
+    confidence: float
+    evidence_cited: list[str]
+    reasoning: str
+
+
+class BandOut(ApiModel):
+    """Where the accept / grey / reject boundaries sat for the run that decided a result.
+
+    Both thresholds are on the calibrated confidence: at or above
+    `t_auto_accept` the engine matches, below `t_auto_reject` it rejects, and
+    the grey band between is where the LLM adjudicates.
+    """
+
+    scoring_config_id: uuid.UUID
+    version: str
+    t_auto_accept: float
+    t_auto_reject: float
+
+
+class BulkIn(ApiModel):
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    action: Literal["reject", "escalate"] = Field(
+        description="Approval is deliberately absent: it opens a case, one record at a time."
+    )
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+class BulkItemOut(ApiModel):
+    id: uuid.UUID
+    ok: bool
+    review_status: str | None = None
+    error: ErrorBodyOut | None = None
+
+
+class BulkOut(ApiModel):
+    succeeded: int
+    failed: int
+    results: list[BulkItemOut]
+
+
+class ErrorBodyOut(ApiModel):
+    code: str
+    message: str
+    details: dict[str, Any] | None = None
 
 
 class ReviewIn(ApiModel):
@@ -383,7 +468,18 @@ class CaseOut(ApiModel):
     created_at: datetime
 
 
-class CaseDetailOut(CaseOut):
+class CaseListItemOut(CaseOut):
+    """A case row with the names a person reads, not only the ids."""
+
+    provider_name: str | None
+    subject_name: str | None
+    sanction_type: str | None
+    source_authority: str | None
+    created_by_email: str | None
+    closed_by_email: str | None
+
+
+class CaseDetailOut(CaseListItemOut):
     provider: ProviderBriefOut | None
     sanction_record: SanctionRecordOut | None
     match: MatchOut | None
@@ -410,6 +506,7 @@ class AuditOut(ApiModel):
     entity_type: str
     entity_id: str
     actor_user_id: uuid.UUID | None
+    actor_email: str | None = None
     actor_role: str | None
     before: dict[str, Any] | None
     after: dict[str, Any] | None
@@ -447,6 +544,42 @@ class VolumePointOut(ApiModel):
     llm_cost_usd: float
 
 
+# --------------------------------------------------------------------------
+# providers
+# --------------------------------------------------------------------------
+
+
+class ProviderListItemOut(ProviderBriefOut):
+    compliance_status: Literal["EXCLUDED", "UNDER_REVIEW", "CLEAR"] = Field(
+        description=(
+            "`EXCLUDED`: an active case. `UNDER_REVIEW`: the engine's choice on a current "
+            "result a reviewer has not decided. `CLEAR`: neither."
+        )
+    )
+
+
+class ProviderMatchOut(MatchListItemOut):
+    """A decision in which this provider was a candidate."""
+
+    candidate_rank: int
+    candidate_posterior: float
+
+
+class ProviderDetailOut(ProviderListItemOut):
+    cases: list[CaseOut]
+    matches: list[ProviderMatchOut] = Field(
+        description="Results that ranked this provider, newest first, superseded ones included."
+    )
+
+
+class FacetsOut(ApiModel):
+    """Distinct values the filter bars offer, over current sanction records."""
+
+    sanction_types: list[str]
+    source_authorities: list[str]
+    states: list[str]
+
+
 class HealthOut(ApiModel):
     status: str
     version: str
@@ -454,5 +587,6 @@ class HealthOut(ApiModel):
 
 
 MatchDetailOut.model_rebuild()
+BulkItemOut.model_rebuild()
 
 __all__ = [name for name in dir() if name[:1].isupper()]

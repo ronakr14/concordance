@@ -130,6 +130,14 @@ class Provider(
             postgresql_using="gin",
             postgresql_ops={"trigram_key": "gin_trgm_ops"},
         ),
+        # The directory's name search is a substring match, which a b-tree
+        # cannot serve and a trigram index can.
+        Index(
+            "ix_providers_name_norm_gin",
+            "name_norm",
+            postgresql_using="gin",
+            postgresql_ops={"name_norm": "gin_trgm_ops"},
+        ),
     )
 
 

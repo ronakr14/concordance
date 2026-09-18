@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -113,6 +114,28 @@ class SanctionRepository:
                 )
             )
         return paginate(self.session, stmt, limit, offset)
+
+    def facets(self) -> dict[str, list[str]]:
+        """Distinct filter values over current records, for the filter bars.
+
+        Offered from the data rather than hard-coded, because the sources are
+        generic (Q1): a state board's exclusion types are not LEIE's.
+        """
+
+        def distinct(column: Any) -> list[str]:
+            stmt = (
+                select(column)
+                .where(SanctionRecord.is_current.is_(True), column.is_not(None), column != "")
+                .distinct()
+                .order_by(column)
+            )
+            return [str(v) for v in self.session.scalars(stmt)]
+
+        return {
+            "sanction_types": distinct(SanctionRecord.sanction_type),
+            "source_authorities": distinct(SanctionRecord.source_authority),
+            "states": distinct(SanctionRecord.state),
+        }
 
     def get_record_row(self, row_id: uuid.UUID) -> SanctionRecord | None:
         """By surrogate id. `get_record` takes the business key, which is not unique

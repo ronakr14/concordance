@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `7 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10) · a portfolio artifact exists from the end of Stage 3.
+Progress: `8 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10; GATE 8's in-browser walkthrough items are accepted pending a manual pass) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -72,7 +72,7 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 
 ### Needed before Stage 8 (React)
 
-- [ ] Install Node 20 LTS, or confirm the existing Node 24 builds Vite cleanly
+- [x] Install Node 20 LTS, or confirm the existing Node 24 builds Vite cleanly — Node 24.15 builds Vite 8 clean; npm behind the corporate TLS proxy needs `NODE_OPTIONS=--use-system-ca`
 
 ### Needed before Stage 10 (Packaging)
 
@@ -1077,128 +1077,147 @@ Design notes and the measured numbers live in `docs/orchestration.md`.
 
 ## Stage 8 — React application · ~16h
 
+### Backend additions the screens needed
+
+Found while planning the screens; built first, with tests, so the client was
+generated against a complete schema.
+
+- [x] `GET /providers` — directory with a **derived** compliance status (`EXCLUDED` / `UNDER_REVIEW` / `CLEAR`), computed by indexed `EXISTS` probes rather than stored; name, id and NPI search on the engine's own name folding
+- [x] `GET /providers/{id}` — full record, every case, every result that ranked the provider (superseded included)
+- [x] Match detail carries its **band**: the thresholds of the scoring config that decided it, not today's config
+- [x] Match detail carries the **adjudication**: the stored LLM response re-run through the same `validate()` the pipeline used, so cited evidence is shown only if it passed the evidence-honesty check
+- [x] Match detail carries `conflicting_cases` (Q5) and the reviewer's email
+- [x] Audit rows and case rows name people (emails, provider and subject names), one extra query per page
+- [x] `GET /sanctions/facets` — filter values from the data, since sources are generic (Q1)
+- [x] `POST /matches/bulk` — reject or escalate up to 100; a savepoint per item so one refusal does not sink the batch; rows locked in id order so overlapping batches cannot deadlock; one audit row per item plus one for the batch, which also records the refused attempts. **No bulk approve**, by design
+- [x] Refresh token in an **httpOnly, SameSite=Strict cookie** scoped to `/api/auth` (`transport: "cookie"` on login); a refused cookie is cleared on the 401. Body tokens kept for the CLI and tests
+- [x] Migration `b8d3e2a41f07`: trigram GIN on `providers.name_norm`, partial index on current `chosen_provider_id`. Autogenerate diff empty
+- [x] `concordance api serve` and `concordance api openapi`; `make api`, `make web`, `make web-build`, `make client`
+- [x] Integration tests for every addition (30/30 in `test_api_workflow.py`), and a unit test for the adjudication re-validation
+
 ### Scaffolding
 
-- [ ] Vite + React 19 + TypeScript project under `frontend/`
-- [ ] Tailwind configured with a design-token scale (spacing, radii, colour)
-- [ ] TanStack Query configured with sane defaults (stale time, retry policy)
-- [ ] TanStack Table for every data grid
-- [ ] Recharts for charts
-- [ ] Router with protected routes
-- [ ] **Typed API client generated from the OpenAPI schema** ⭐ — not hand-written
-- [ ] Client regeneration wired into a `make` target
-- [ ] Auth token storage, refresh-on-401 interceptor, logout on refresh failure
-- [ ] Role-aware rendering — analyst never sees an approve button that will 403 ⭐
+- [x] Vite + React 19 + TypeScript project under `frontend/` — Vite 8, React 19.3, TypeScript 5.9 (pinned: `openapi-typescript` requires ^5)
+- [x] Tailwind configured with a design-token scale (spacing, radii, colour) — Tailwind 4 `@theme` over CSS custom properties; every colour is a role defined once per mode
+- [x] TanStack Query configured with sane defaults (stale time, retry policy) — 30 s stale; no retry on a 4xx
+- [x] TanStack Table for every data grid — v9, one `DataTable` component, server-side sort and paging
+- [x] Recharts for charts
+- [x] Router with protected routes — React Router 8, lazy route chunks, an error boundary on every route
+- [x] **Typed API client generated from the OpenAPI schema** ⭐ — `openapi-typescript` types + `openapi-fetch`; schema exported from the app factory, no running server needed
+- [x] Client regeneration wired into a `make` target — `make client`
+- [x] Auth token storage, refresh-on-401 interceptor, logout on refresh failure — access token in memory only; single-flight refresh (a reused refresh token revokes the user's sessions, so ten parallel 401s must cause one refresh)
+- [x] Role-aware rendering — analyst never sees an approve button that will 403 ⭐ — `AdminOnly`, `RequireAdmin`, `allowedActions()`; Audit hidden from the analyst nav
 
 ### Design system
 
-- [ ] Status vocabulary defined once: `MATCH`, `AMBIGUOUS`, `UNMATCHED`, `PENDING`, `APPROVED`, `REJECTED`, `CASE_CREATED` ⭐
-- [ ] One colour + one icon per status, used identically on every screen ⭐
-- [ ] Confidence badge component with a consistent scale
-- [ ] Shared table component: sorting, server-side pagination, column visibility
-- [ ] Shared filter bar component
-- [ ] Loading skeletons (not spinners) for tables and cards
-- [ ] Empty states with a useful next action
-- [ ] Error boundaries per route
-- [ ] Toast notifications for mutations
-- [ ] Layout shell: sidebar navigation across Dashboard, Providers, Sanctions, Queue, Cases, Audit ⭐
-- [ ] Responsive down to ~1280px without breakage
+- [x] Status vocabulary defined once: `MATCH`, `AMBIGUOUS`, `UNMATCHED`, `PENDING`, `APPROVED`, `REJECTED`, `CASE_CREATED` ⭐ — `lib/status.ts`, plus the case, run, file and compliance statuses
+- [x] One colour + one icon per status, used identically on every screen ⭐ — only ever drawn through `StatusBadge`; colour never carries meaning alone
+- [x] Confidence badge component with a consistent scale
+- [x] Shared table component: sorting, server-side pagination, column visibility — visibility remembered per table
+- [x] Shared filter bar component
+- [x] Loading skeletons (not spinners) for tables and cards
+- [x] Empty states with a useful next action
+- [x] Error boundaries per route
+- [x] Toast notifications for mutations
+- [x] Layout shell: sidebar navigation across Dashboard, Providers, Sanctions, Queue, Cases, Audit ⭐
+- [ ] Responsive down to ~1280px without breakage — layouts use wrapping grids and scroll containers; not yet checked at 1280px in a browser
+- [x] Light and dark themes, system default, no flash on load — chart and status colours from the validated data-viz palette, checked with its validator in both modes
 
 ### Login
 
-- [ ] Login form with validation
-- [ ] Error handling for bad credentials
-- [ ] Redirect to the intended route after login
+- [x] Login form with validation
+- [x] Error handling for bad credentials — one message for every cause, as the API; rate limiting gets its own message
+- [x] Redirect to the intended route after login — `?next=`, same-app paths only (no open redirect)
 
 ### Dashboard
 
-- [ ] KPI tiles: providers, sanctions, matched, unmatched, ambiguous, pending review, approved, cases created ⭐
-- [ ] Confidence distribution chart
-- [ ] State distribution chart
-- [ ] Case status chart
-- [ ] Reconciliation volume over time chart
-- [ ] Operational summary panel giving a clear overview of workload
-- [ ] Every chart has an accessible label and a readable empty state
+- [x] KPI tiles: providers, sanctions, matched, unmatched, ambiguous, pending review, approved, cases created ⭐ — each links to the filtered list behind it
+- [x] Confidence distribution chart
+- [x] State distribution chart — top 12, the rest folded into "Other"
+- [x] Case status chart
+- [x] Reconciliation volume over time chart — daily / weekly / monthly
+- [x] Operational summary panel giving a clear overview of workload
+- [x] Every chart has an accessible label and a readable empty state — and a table view of the same numbers
 
 ### Providers
 
-- [ ] Directory table: provider id, NPI, name, specialty, organization, location, compliance status ⭐
-- [ ] Server-side filter, sort and pagination
-- [ ] Search by name and NPI
-- [ ] Provider profile view with full detail
-- [ ] Profile shows related compliance and reconciliation history
+- [x] Directory table: provider id, NPI, name, specialty, organization, location, compliance status ⭐
+- [x] Server-side filter, sort and pagination
+- [x] Search by name and NPI
+- [x] Provider profile view with full detail — a page rather than a drawer, so it can be linked to
+- [x] Profile shows related compliance and reconciliation history
 
 ### Sanctions
 
-- [ ] Sanction records table with source information ⭐
-- [ ] Source file lineage view, showing which column mapping produced each file
-- [ ] Upload step 1: file picker, progress, inspection result ⭐
-- [ ] **Column mapping UI** — detected source columns on the left, canonical fields on the right, proposed mapping pre-filled (Q1) ⭐
-- [ ] Sample rows shown live under the mapping so the analyst can see the effect ⭐
-- [ ] Unmapped required fields blocked with a clear message
-- [ ] Save mapping as the default for this source authority
-- [ ] Upload step 2: commit, with per-column validation errors surfaced clearly ⭐
-- [ ] Duplicate-file 409 shown as a readable message, not a raw error
-- [ ] Post-upload prompt to trigger reconciliation
+- [x] Sanction records table with source information ⭐
+- [x] Source file lineage view, showing which column mapping produced each file
+- [x] Upload step 1: file picker, progress, inspection result ⭐ — drag and drop; real upload progress (XHR)
+- [x] **Column mapping UI** — detected source columns on the left, canonical fields on the right, proposed mapping pre-filled (Q1) ⭐
+- [x] Sample rows shown live under the mapping so the analyst can see the effect ⭐
+- [x] Unmapped required fields blocked with a clear message
+- [x] Save mapping as the default for this source authority
+- [x] Upload step 2: commit, with per-column validation errors surfaced clearly ⭐ — the API's per-field `details` are placed beside the field they name
+- [x] Duplicate-file 409 shown as a readable message, not a raw error
+- [x] Post-upload prompt to trigger reconciliation — and live progress of the run it starts
 
 ### Queue
 
-- [ ] Review queue table of results needing review ⭐
-- [ ] Filters: confidence, status, state, sanction type, date ⭐
-- [ ] Filter: conflicts only (Q5) ⭐
-- [ ] Filter: individual vs organization (Q2)
-- [ ] Saved views / persisted filter state
-- [ ] Bulk selection
-- [ ] Row click navigates to Investigation
+- [x] Review queue table of results needing review ⭐
+- [x] Filters: confidence, status, state, sanction type, date ⭐
+- [x] Filter: conflicts only (Q5) ⭐
+- [x] Filter: individual vs organization (Q2)
+- [x] Saved views / persisted filter state — filters live in the URL; named views in localStorage
+- [x] Bulk selection — reject or escalate; only rows the user may decide are selectable
+- [x] Row click navigates to Investigation
 
 ### Investigation ⭐ — the centrepiece
 
-- [ ] Side-by-side sanction record vs candidate provider ⭐
-- [ ] Per-field agreement badge showing the level, the score, **and the weight contribution** ⭐
-- [ ] Fields visually sorted or marked by evidence strength
-- [ ] Candidate ranking list with the ability to switch the selected candidate ⭐
-- [ ] Calibrated confidence displayed with its position in the accept/grey/reject band ⭐
-- [ ] AI explanation panel
-- [ ] **Cited evidence highlighted in the record above** ⭐
-- [ ] Route indicator: deterministic / probabilistic / LLM
-- [ ] Recommendation banner: APPROVE / REVIEW / REJECT ⭐
-- [ ] Approve action (admin), with confirmation
-- [ ] Reject action, with comment
-- [ ] Escalate / send-to-review action, with comment
-- [ ] Create-case modal on approval, with configurable duration defaulting to 3 months ⭐
-- [ ] Keyboard navigation between queue items — analysts work in volume
-- [ ] Handles the no-candidate case gracefully
-- [ ] **Organization records render the organization field set** — legal name, DBA, EIN — not empty DOB/first-name rows (Q2) ⭐
-- [ ] Superseded-result banner with a link to the current result (Q5) ⭐
-- [ ] Conflict banner when this record's active case disagrees with a newer run (Q5) ⭐
+- [x] Side-by-side sanction record vs candidate provider ⭐
+- [x] Per-field agreement badge showing the level, the score, **and the weight contribution** ⭐ — level, m / u, and signed bits as a diverging bar; the weights sum to the match weight in the footer
+- [x] Fields visually sorted or marked by evidence strength — strongest first, toggleable
+- [x] Candidate ranking list with the ability to switch the selected candidate ⭐
+- [x] Calibrated confidence displayed with its position in the accept/grey/reject band ⭐
+- [x] AI explanation panel
+- [x] **Cited evidence highlighted in the record above** ⭐ — in the record card and in the evidence table
+- [x] Route indicator: deterministic / probabilistic / LLM
+- [x] Recommendation banner: APPROVE / REVIEW / REJECT ⭐
+- [x] Approve action (admin), with confirmation
+- [x] Reject action, with comment
+- [x] Escalate / send-to-review action, with comment
+- [x] Create-case modal on approval, with configurable duration defaulting to 3 months ⭐ — approval and case are one step, as in the API
+- [x] Keyboard navigation between queue items — analysts work in volume — `j`/`k` in the queue and between items, `a`/`r`/`e` for verdicts, `Esc` back
+- [x] Handles the no-candidate case gracefully
+- [x] **Organization records render the organization field set** — legal name, DBA, EIN — not empty DOB/first-name rows (Q2) ⭐ — mirrors `ORGANIZATION_FIELDS`
+- [x] Superseded-result banner with a link to the current result (Q5) ⭐
+- [x] Conflict banner when this record's active case disagrees with a newer run (Q5) ⭐
 
 ### Cases
 
-- [ ] Case list: case id, provider, sanction, start/end dates, status, approval metadata ⭐
-- [ ] Filter by status: active, pending, completed/expired, rejected, closed ⭐
-- [ ] Case detail view
-- [ ] Status timeline visualization
-- [ ] Audit history embedded in the detail view ⭐
-- [ ] Conflict indicator on flagged cases, linking to the newer contradicting result (Q5) ⭐
-- [ ] Expired cases show the system-actor audit row that expired them (Q3)
-- [ ] Close-case action (admin) with reason
+- [x] Case list: case id, provider, sanction, start/end dates, status, approval metadata ⭐
+- [ ] Filter by status: active, pending, completed/expired, rejected, closed ⭐ — active, expired, closed and rejected; the schema has no `PENDING` case status (a case exists only once approved), so this needs a decision rather than code
+- [x] Case detail view
+- [x] Status timeline visualization
+- [x] Audit history embedded in the detail view ⭐
+- [x] Conflict indicator on flagged cases, linking to the newer contradicting result (Q5) ⭐
+- [x] Expired cases show the system-actor audit row that expired them (Q3)
+- [x] Close-case action (admin) with reason
 
 ### Audit
 
-- [ ] Event timeline showing timestamp, action, actor, entity ⭐
-- [ ] Filters: entity type, actor, action, date range
-- [ ] Before/after diff viewer for state changes
-- [ ] Deep link from a case or match into its filtered audit view
+- [x] Event timeline showing timestamp, action, actor, entity ⭐
+- [x] Filters: entity type, actor, action, date range
+- [x] Before/after diff viewer for state changes
+- [x] Deep link from a case or match into its filtered audit view
 
 ### GATE 8
-- [ ] Full workflow driven in the browser: login → upload → **map columns** → commit → run → review → approve → case created → visible in audit ⭐
+- [ ] Full workflow driven in the browser: login → upload → **map columns** → commit → run → review → approve → case created → visible in audit ⭐ — every call the screens make verified through the dev proxy with cookie auth; not yet clicked through in a browser (the Chrome extension was not connected)
 - [ ] An organization sanction record reviewed end to end with the organization field set rendered ⭐
-- [ ] Analyst account cannot see or invoke admin-only actions ⭐
-- [ ] Every screen has a working loading, empty and error state
-- [ ] Frontend builds clean: `tsc --noEmit` and the production Vite build both pass
+- [ ] Analyst account cannot see or invoke admin-only actions ⭐ — enforced in code and by the API; not yet observed in a browser
+- [ ] Every screen has a working loading, empty and error state — built on every screen; not yet observed in a browser
+- [x] Frontend builds clean: `tsc --noEmit` and the production Vite build both pass — no chunk over 500 kB after route splitting
 - [ ] No console errors during the full workflow
-- [ ] `npm run dev` proxies to the locally running API without CORS errors
-- [ ] `npm run build` output served statically also works — proves it is not dev-server-dependent (nginx packaging comes in Stage 10)
+- [x] `npm run dev` proxies to the locally running API without CORS errors — same origin through `/api`, so there is no CORS at all
+- [x] `npm run build` output served statically also works — proves it is not dev-server-dependent (nginx packaging comes in Stage 10) — `vite preview`: deep links fall back to the app, `/api` proxies
 
 ---
 

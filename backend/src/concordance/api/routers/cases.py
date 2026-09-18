@@ -45,7 +45,7 @@ def create(
     return schemas.CaseOut.model_validate(case)
 
 
-@router.get("", response_model=schemas.Page[schemas.CaseOut])
+@router.get("", response_model=schemas.Page[schemas.CaseListItemOut])
 def list_cases(
     session: SessionDep,
     _user: CurrentUser,
@@ -56,7 +56,7 @@ def list_cases(
     conflict: bool = False,
     date_from: Annotated[date | None, Query(description="Start date on or after.")] = None,
     date_to: Annotated[date | None, Query(description="Start date on or before.")] = None,
-) -> schemas.Page[schemas.CaseOut]:
+) -> schemas.Page[schemas.CaseListItemOut]:
     page = CaseRepository(session).list_cases(
         status=status_,
         conflicts_only=conflict,
@@ -66,7 +66,7 @@ def list_cases(
         limit=limit,
         offset=offset,
     )
-    return page_of(schemas.CaseOut, page)
+    return page_of(schemas.CaseListItemOut, page, presenters.case_items(session, list(page.items)))
 
 
 @router.get("/{case_id}", response_model=schemas.CaseDetailOut)
@@ -90,7 +90,7 @@ def case_audit(
     if CaseRepository(session).get(case_id) is None:
         raise NotFoundError(f"no case {case_id}")
     page = AuditRepository(session).for_entity("case", str(case_id), limit=limit, offset=offset)
-    return page_of(schemas.AuditOut, page, [presenters.audit_out(r) for r in page.items])
+    return page_of(schemas.AuditOut, page, presenters.audit_rows(session, list(page.items)))
 
 
 @router.post(

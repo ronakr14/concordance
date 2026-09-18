@@ -144,4 +144,32 @@ def escalate(
     return schemas.MatchOut.model_validate(result)
 
 
+@router.post("/bulk", response_model=schemas.BulkOut)
+def bulk(body: schemas.BulkIn, session: SessionDep, actor: ActorDep) -> schemas.BulkOut:
+    """Reject or escalate up to 100 results with one comment.
+
+    Each item is decided and audited exactly as the single endpoint would, in
+    its own savepoint: a refused item is reported beside its id and the rest
+    still commit. The response is 200 even when some items fail - read
+    `failed`. Approval is not offered in bulk.
+    """
+    outcomes = review.bulk(session, actor, body.ids, action=body.action, comment=body.comment)
+    session.commit()
+    results = [
+        schemas.BulkItemOut(
+            id=o.result_id,
+            ok=o.ok,
+            review_status=o.result.review_status if o.result is not None else None,
+            error=schemas.ErrorBodyOut(
+                code=o.error.code, message=o.error.message, details=o.error.details or None
+            )
+            if o.error is not None
+            else None,
+        )
+        for o in outcomes
+    ]
+    succeeded = sum(1 for r in results if r.ok)
+    return schemas.BulkOut(succeeded=succeeded, failed=len(results) - succeeded, results=results)
+
+
 __all__ = ["router"]

@@ -275,6 +275,13 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_where=text("superseded_by IS NULL"),
         ),
         Index("ix_match_results_created_at", "created_at"),
+        # A provider's compliance status asks "is this provider the engine's
+        # choice on a current, undecided result" once per directory row.
+        Index(
+            "ix_match_results_current_chosen_provider",
+            "chosen_provider_id",
+            postgresql_where=text("superseded_by IS NULL"),
+        ),
     )
 
 

@@ -49,7 +49,7 @@ def search_audit(
         limit=limit,
         offset=offset,
     )
-    return page_of(schemas.AuditOut, page, [presenters.audit_out(r) for r in page.items])
+    return page_of(schemas.AuditOut, page, presenters.audit_rows(session, list(page.items)))
 
 
 @stats_router.get("/kpis", response_model=schemas.KpiOut)

@@ -186,6 +186,16 @@ def list_records(
     )
 
 
+@router.get("/sanctions/facets", response_model=schemas.FacetsOut)
+def facets(session: SessionDep, _user: CurrentUser) -> schemas.FacetsOut:
+    """Distinct sanction types, source authorities and states, for filter menus.
+
+    Declared before `/sanctions/{record_id}`: a path parameter matches first
+    and would answer `facets` with a 422 for not being a UUID.
+    """
+    return schemas.FacetsOut(**SanctionRepository(session).facets())
+
+
 @router.get("/sanctions/{record_id}", response_model=schemas.SanctionRecordDetailOut)
 def get_record(
     record_id: uuid.UUID, session: SessionDep, _user: CurrentUser

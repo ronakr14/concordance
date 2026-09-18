@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/* Dark mode follows a class on <html>, set before first paint by index.html
+   and toggled by src/lib/theme.ts. "System" is the default. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Every colour in the app is a role, defined once per mode. Surfaces, ink and
+   chart colours come from the validated data-viz reference palette (both
+   modes checked with its validator: lightness band, chroma, CVD separation,
+   contrast). Status colours are the palette's fixed status scale and are
+   never used for chart series; a status always ships with an icon and a
+   label, so colour never carries meaning alone.
+   --------------------------------------------------------------------------- */
+:root {
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ee;
+  --surface-3: #e9e8e3;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d67;
+  --border: rgba(11, 11, 11, 0.1);
+  --border-strong: rgba(11, 11, 11, 0.18);
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+
+  --accent: #256abf;
+  --accent-hover: #1c5cab;
+  --accent-fg: #ffffff;
+  --accent-wash: #cde2fb;
+  --ring: #3987e5;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  /* Diverging pair (blue <-> red, grey midpoint): a field's weight for or
+     against a match. */
+  --diverge-pos: #2a78d6;
+  --diverge-neg: #e34948;
+
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --warning-text: #7a5200;
+  --serious: #ec835a;
+  --serious-text: #8f3b12;
+  --critical: #d03b3b;
+  --critical-text: #a02525;
+  --info: #4a3aa7;
+  --info-text: #3b2e8a;
+  --neutral: #898781;
+
+  color-scheme: light;
+}
+
+.dark {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #222220;
+  --surface-3: #2c2c2a;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #a3a197;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --grid: #2c2c2a;
+  --axis: #383835;
+
+  --accent: #256abf;
+  --accent-hover: #2a78d6;
+  --accent-fg: #ffffff;
+  --accent-wash: #104281;
+  --ring: #5598e7;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --diverge-pos: #3987e5;
+  --diverge-neg: #e66767;
+
+  --good-text: #3fc43f;
+  --warning-text: #fab219;
+  --serious-text: #f2a07f;
+  --critical-text: #f07a7a;
+  --info: #9085e9;
+  --info-text: #b3aaf2;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-wash: var(--accent-wash);
+  --color-ring: var(--ring);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-diverge-pos: var(--diverge-pos);
+  --color-diverge-neg: var(--diverge-neg);
+  --color-good: var(--good);
+  --color-good-text: var(--good-text);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-serious: var(--serious);
+  --color-serious-text: var(--serious-text);
+  --color-critical: var(--critical);
+  --color-critical-text: var(--critical-text);
+  --color-info: var(--info);
+  --color-info-text: var(--info-text);
+  --color-neutral: var(--neutral);
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
+
+  /* One radius scale, one spacing rhythm (Tailwind's 4px base). */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* The evidence highlight: a phrase of the sanction record the adjudicator
+   cited, marked in the record itself (Investigation). */
+mark.cited {
+  background: color-mix(in oklab, var(--warning) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}

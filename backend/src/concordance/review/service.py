@@ -47,7 +47,13 @@ from concordance.db.enums import Decision, FeedbackLabel, ReviewStatus
 from concordance.db.models import Case, MatchCandidate, MatchResult
 from concordance.db.repositories.evaluation import EvalRepository
 from concordance.db.repositories.matches import MatchRepository
-from concordance.errors import ConflictError, ForbiddenError, InvalidError, NotFoundError
+from concordance.errors import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    InvalidError,
+    NotFoundError,
+)
 
 #: Candidates listed in a "choose one" error, so the client can offer them.
 CHOICES_LISTED = 5
@@ -256,6 +262,78 @@ def escalate(
     return result
 
 
+@dataclass
+class BulkOutcome:
+    result_id: uuid.UUID
+    result: MatchResult | None = None
+    error: DomainError | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def bulk(
+    session: Session,
+    actor: Actor,
+    result_ids: list[uuid.UUID],
+    *,
+    action: str,
+    comment: str | None,
+) -> list[BulkOutcome]:
+    """Reject or escalate many results, each on its own terms.
+
+    Each item runs in a savepoint, so one refusal - already reviewed, escalated
+    past an analyst, superseded - rolls back that item alone and is reported
+    beside it, while the rest commit together. Every item is decided by the
+    same rule as the single endpoint and audited as its own action; a batch is
+    a convenience for the reviewer, not a second, looser path.
+
+    Rows are locked in id order rather than request order, so two overlapping
+    batches acquire their locks in the same sequence and cannot deadlock.
+
+    Approval is not offered: it opens a case, and a compliance action taken on
+    a hundred records at once is a hundred actions nobody looked at.
+    """
+    if action not in ("reject", "escalate"):
+        raise InvalidError(f"bulk {action} is not supported", details={"action": "reject or escalate"})
+    text = _require_comment(comment)
+    unique = list(dict.fromkeys(result_ids))
+    outcomes: dict[uuid.UUID, BulkOutcome] = {}
+    for result_id in sorted(unique):
+        try:
+            with session.begin_nested():
+                if action == "reject":
+                    result = reject(session, actor, result_id, comment=text)
+                else:
+                    result = escalate(session, actor, result_id, comment=text)
+            outcomes[result_id] = BulkOutcome(result_id, result=result)
+        except DomainError as exc:
+            outcomes[result_id] = BulkOutcome(result_id, error=exc)
+
+    # One row for the batch itself, beside each item's own. The item rows say
+    # what changed; this one also records what was attempted and refused,
+    # which no item row can - a refused item changed nothing.
+    audit.record(
+        session,
+        actor,
+        "match.bulk_reviewed",
+        entity_type="review_batch",
+        entity_id=actor.request_id or uuid.uuid4().hex,
+        after={
+            "action": action,
+            "comment": text,
+            "succeeded": [str(i) for i in unique if outcomes[i].ok],
+            "refused": {
+                str(i): outcomes[i].error.code  # type: ignore[union-attr]
+                for i in unique
+                if not outcomes[i].ok
+            },
+        },
+    )
+    return [outcomes[result_id] for result_id in unique]
+
+
 def create_case(
     session: Session,
     settings: Settings,
@@ -359,4 +437,4 @@ def _require_comment(comment: str | None) -> str:
     return text
 
 
-__all__ = ["Approval", "approve", "create_case", "escalate", "reject", "view"]
+__all__ = ["Approval", "BulkOutcome", "approve", "bulk", "create_case", "escalate", "reject", "view"]

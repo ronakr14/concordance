@@ -240,6 +240,7 @@ The engine's decision per record per run. Superseded rather than updated (Q5).
 
 - `ix_match_results_created_at` on match_results.created_at
 - `ix_match_results_current` on match_results.run_id, match_results.review_status (partial: `superseded_by IS NULL`)
+- `ix_match_results_current_chosen_provider` on match_results.chosen_provider_id (partial: `superseded_by IS NULL`) — the provider directory's derived compliance status
 - `ix_match_results_current_confidence` on calibrated_confidence DESC NULLS LAST (partial: `superseded_by IS NULL`)
 - `ix_match_results_current_decision` on match_results.decision, match_results.review_status (partial: `superseded_by IS NULL`)
 - `ix_match_results_run_id_review_status` on match_results.run_id, match_results.review_status
@@ -305,6 +306,7 @@ The provider master. Written only by the loader; read by everything.
 
 - `ix_providers_license_number_license_state` on providers.license_number, providers.license_state
 - `ix_providers_name_norm` on providers.name_norm
+- `ix_providers_name_norm_gin` on providers.name_norm (gin, `gin_trgm_ops`) — substring name search in the provider directory
 - `ix_providers_name_phonetic_state` on providers.name_phonetic, providers.state
 - `ix_providers_npi` on providers.npi
 - `ix_providers_ordinal` on providers.ordinal

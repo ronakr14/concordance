@@ -49,6 +49,7 @@ class ApiError(Exception):
         code: str | None = None,
         status_code: int | None = None,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -57,6 +58,9 @@ class ApiError(Exception):
         if status_code is not None:
             self.status_code = status_code
         self.details = details or {}
+        #: Sent with the error response - e.g. a `Set-Cookie` that clears a
+        #: refresh cookie the server has just refused.
+        self.headers = headers or {}
 
 
 class NotFoundError(ApiError):
@@ -114,15 +118,13 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApiError)
     async def _api_error(_request: Request, exc: ApiError) -> JSONResponse:
-        headers = (
-            {"WWW-Authenticate": "Bearer"}
-            if exc.status_code == status.HTTP_401_UNAUTHORIZED
-            else None
-        )
+        headers = dict(exc.headers)
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            headers["WWW-Authenticate"] = "Bearer"
         return JSONResponse(
             status_code=exc.status_code,
             content=error_body(exc.code, exc.message, exc.details),
-            headers=headers,
+            headers=headers or None,
         )
 
     @app.exception_handler(domain.DomainError)

@@ -80,12 +80,16 @@ def test_constraints_are_named() -> None:
 
 
 def test_the_trigram_indexes_use_gin_trgm_ops() -> None:
-    """The fuzzy block is a similarity search; a btree index would not serve it."""
+    """The fuzzy block is a similarity search; a btree index would not serve it.
+
+    Three: the blocking key on both sides, and the provider directory's
+    substring name search.
+    """
     ddl = _ddl()
-    assert ddl.count("gin_trgm_ops") == 2, (
-        "expected a trigram index on providers and on sanction_records"
+    assert ddl.count("gin_trgm_ops") == 3, (
+        "expected trigram indexes on both trigram keys and on providers.name_norm"
     )
-    assert "USING gin" in ddl
+    assert "ix_providers_name_norm_gin ON providers USING gin (name_norm gin_trgm_ops)" in ddl
 
 
 def test_current_results_have_a_partial_index() -> None:

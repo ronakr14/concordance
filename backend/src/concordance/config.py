@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     #: wildcard: with credentials allowed, a wildcard would let any page spend
     #: a logged-in user's token.
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    #: Path the refresh cookie is scoped to, as the *browser* sees it. The web
+    #: app reaches the API through an `/api` prefix (Vite's proxy in
+    #: development, nginx in the container), so the cookie is sent to the auth
+    #: routes behind it and to nothing else.
+    REFRESH_COOKIE_PATH: str = "/api/auth"  # Stage 8
     #: Largest sanction workbook accepted, in bytes. The monthly LEIE file is
     #: about 12 MB as xlsx; the ceiling leaves room for it and refuses the rest
     #: before it is read into memory.

@@ -13,9 +13,9 @@ whoever finds it.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from concordance.api.deps import (
@@ -31,6 +31,7 @@ from concordance.api.errors import ConflictError, ForbiddenError, UnauthorizedEr
 from concordance.api.schemas import LoginIn, RefreshIn, RegisterIn, TokenOut, UserOut
 from concordance.auth import service
 from concordance.auth.passwords import WeakPasswordError
+from concordance.config import Settings
 from concordance.logging_setup import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -83,12 +84,17 @@ def register(
 @router.post("/login", response_model=TokenOut)
 def login(
     body: LoginIn,
+    response: Response,
     session: SessionDep,
     settings: SettingsDep,
     request_id: RequestId,
     ip: ClientIp,
 ) -> TokenOut:
-    """Exchange credentials for an access and refresh token."""
+    """Exchange credentials for an access and refresh token.
+
+    With `transport: "cookie"` the refresh token is set as an httpOnly cookie
+    and the body's `refresh_token` is null - the browser app's mode.
+    """
     try:
         pair = service.login(
             session,
@@ -103,51 +109,120 @@ def login(
         raise UnauthorizedError("email or password is incorrect", code="invalid_credentials") from exc
 
     session.commit()
-    return TokenOut(
-        access_token=pair.access_token,
-        refresh_token=pair.refresh_token,
-        expires_at=pair.expires_at,
-    )
+    return _issue(response, settings, pair, cookie=body.transport == "cookie")
 
 
 @router.post("/refresh", response_model=TokenOut)
 def refresh(
-    body: RefreshIn,
+    request: Request,
+    response: Response,
     session: SessionDep,
     settings: SettingsDep,
     request_id: RequestId,
+    body: RefreshIn | None = None,
 ) -> TokenOut:
-    """Rotate a refresh token: the presented one is revoked as the new pair is issued."""
+    """Rotate a refresh token: the presented one is revoked as the new pair is issued.
+
+    The token comes from the body or, when the body names none, from the
+    refresh cookie; the new one goes back the way the old one came.
+    """
+    token, from_cookie = _presented(request, body)
+    if token is None:
+        raise UnauthorizedError("no refresh token presented", code="invalid_refresh_token")
     try:
-        pair = service.refresh(
-            session, settings, refresh_token=body.refresh_token, request_id=request_id
-        )
+        pair = service.refresh(session, settings, refresh_token=token, request_id=request_id)
     except service.InvalidRefreshTokenError as exc:
         session.commit()  # a reuse detection revoked this user's tokens; keep that
+        if from_cookie:
+            raise UnauthorizedError(
+                str(exc), code="invalid_refresh_token", headers=_cleared_cookie_headers(settings)
+            ) from exc
         raise UnauthorizedError(str(exc), code="invalid_refresh_token") from exc
 
     session.commit()
-    return TokenOut(
-        access_token=pair.access_token,
-        refresh_token=pair.refresh_token,
-        expires_at=pair.expires_at,
-    )
+    return _issue(response, settings, pair, cookie=from_cookie)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(
-    body: RefreshIn,
+    request: Request,
+    response: Response,
     session: SessionDep,
+    settings: SettingsDep,
     request_id: RequestId,
+    body: RefreshIn | None = None,
 ) -> None:
     """Revoke one refresh token. Unknown tokens succeed silently.
 
     No authentication required, and no error for an unrecognised token: a client
     logging out with an expired session should not be told to log in first, and
-    an attacker learns nothing from either answer.
+    an attacker learns nothing from either answer. The refresh cookie, if any,
+    is cleared either way.
     """
-    service.logout(session, refresh_token=body.refresh_token, request_id=request_id)
-    session.commit()
+    token, _ = _presented(request, body)
+    if token is not None:
+        service.logout(session, refresh_token=token, request_id=request_id)
+        session.commit()
+    _clear_cookie(response, settings)
+
+
+# --------------------------------------------------------------------------
+# the refresh cookie
+# --------------------------------------------------------------------------
+
+#: httpOnly, so no script on the page can read it; SameSite=Strict, so no other
+#: site can make the browser send it; scoped to the auth routes, so it does not
+#: ride along on every API call.
+REFRESH_COOKIE = "concordance_refresh"
+
+
+def _presented(request: Request, body: RefreshIn | None) -> tuple[str | None, bool]:
+    """The refresh token and whether it came from the cookie. The body wins."""
+    if body is not None and body.refresh_token:
+        return body.refresh_token, False
+    cookie = request.cookies.get(REFRESH_COOKIE)
+    return (cookie, True) if cookie else (None, False)
+
+
+def _issue(response: Response, settings: Settings, pair: Any, *, cookie: bool) -> TokenOut:
+    if not cookie:
+        return TokenOut(
+            access_token=pair.access_token,
+            refresh_token=pair.refresh_token,
+            expires_at=pair.expires_at,
+        )
+    response.set_cookie(
+        REFRESH_COOKIE,
+        pair.refresh_token,
+        max_age=settings.JWT_REFRESH_TTL,
+        path=settings.REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.ENV == "production",
+        samesite="strict",
+    )
+    return TokenOut(access_token=pair.access_token, refresh_token=None, expires_at=pair.expires_at)
+
+
+def _clear_cookie(response: Response, settings: Settings) -> None:
+    response.delete_cookie(
+        REFRESH_COOKIE,
+        path=settings.REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.ENV == "production",
+        samesite="strict",
+    )
+
+
+def _cleared_cookie_headers(settings: Settings) -> dict[str, str]:
+    """The `Set-Cookie` that clears the cookie, for an error response.
+
+    An error handler builds a fresh response, so headers set on the injected
+    `Response` are lost when the route raises. A rejected cookie is cleared so
+    the browser stops presenting a token that will never work again.
+    """
+    scratch = Response()
+    _clear_cookie(scratch, settings)
+    return {"set-cookie": scratch.headers["set-cookie"]}
 
 
 @router.get("/me", response_model=UserOut, dependencies=[Depends(bearer_scheme)])

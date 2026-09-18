@@ -152,7 +152,11 @@ def world(app_url: str, owner_url: str, tmp_path_factory: Any) -> Iterator[World
 
     tag = f"t{uuid.uuid4().hex[:8]}"
     authority = f"TEST-{tag}"
-    owner_engine = create_engine(owner_url, connect_args={"connect_timeout": 20})
+    # Pre-ping: teardown runs minutes after setup, and a hosted database may
+    # have closed the idle connection in between.
+    owner_engine = create_engine(
+        owner_url, connect_args={"connect_timeout": 20}, pool_pre_ping=True
+    )
     owner = sessionmaker(bind=owner_engine)()
 
     settings = Settings(
@@ -179,6 +183,10 @@ def world(app_url: str, owner_url: str, tmp_path_factory: Any) -> Iterator[World
             tokens[role] = login.json()
 
         picked = _source_rows(owner)
+        # End the read's transaction now. Held open for the whole module, it is
+        # killed by the server's idle-in-transaction timeout, and teardown's
+        # cleanup dies with it - leaving the module's rows behind.
+        owner.rollback()
         assert len(picked["match"]) == 5 and picked["ambiguous"] and picked["org"]
         roles: dict[str, str] = {}
         rows: dict[str, dict[str, Any]] = {}
@@ -569,6 +577,118 @@ def test_an_updated_file_supersedes_and_flags_the_live_case(world: World) -> Non
     assert new["id"] in {m["id"] for m in flagged}
 
 
+def test_the_detail_names_its_band_its_reviewer_and_the_case_it_contradicts(world: World) -> None:
+    [approved] = world.by_role("match0")
+    detail = world.call("GET", f"/matches/{approved['id']}").json()
+    band = detail["band"]
+    assert band is not None and band["version"]
+    assert 0.0 <= band["t_auto_reject"] <= band["t_auto_accept"] <= 1.0
+    assert detail["reviewed_by_email"] == f"admin-{world.tag}@concordance.example.com"
+
+    # The result that superseded match2's approved decision contradicts its live case.
+    old = _superseded(world, "match2")
+    newer = world.call("GET", f"/matches/{old['superseded_by']}").json()
+    [conflicting] = newer["conflicting_cases"]
+    assert conflicting["match_result_id"] == old["id"] and conflicting["status"] == "ACTIVE"
+
+
+def _superseded(world: World, role: str) -> dict[str, Any]:
+    """The first run's result for a role whose record a later upload replaced."""
+    history = world.call(
+        "GET", f"/matches?run_id={world.run_id}&include_superseded=true&limit=100"
+    ).json()["items"]
+    return next(h for h in history if world.roles.get(h["record_id"]) == role)
+
+
+def test_the_provider_directory_derives_compliance(world: World) -> None:
+    [pending] = world.by_role("match3")
+    # match2 was approved, so its provider holds a live case - flagged, not closed.
+    excluded_id = _superseded(world, "match2")["approved_provider_id"]
+
+    listed = world.call("GET", f"/providers?q={excluded_id}", as_="analyst").json()
+    assert [p["provider_id"] for p in listed["items"]] == [excluded_id]
+    assert listed["items"][0]["compliance_status"] == "EXCLUDED"
+    not_clear = world.call("GET", f"/providers?q={excluded_id}&compliance=CLEAR").json()
+    assert not_clear["total"] == 0, "the compliance filter agrees with the column"
+
+    # Pending and proposed by the engine: under review, unless another record's
+    # approval has already excluded the same provider.
+    reviewed = world.call("GET", f"/providers/{pending['chosen_provider_id']}").json()
+    assert reviewed["compliance_status"] in ("UNDER_REVIEW", "EXCLUDED")
+    ranked = {m["id"]: m for m in reviewed["matches"]}
+    assert ranked[pending["id"]]["candidate_rank"] >= 1
+
+    profile = world.call("GET", f"/providers/{excluded_id}").json()
+    assert any(c["status"] == "ACTIVE" for c in profile["cases"])
+    if profile["npi"]:
+        by_npi = world.call("GET", f"/providers?q={profile['npi']}").json()["items"]
+        assert excluded_id in {p["provider_id"] for p in by_npi}
+    name = profile["organization_name"] if profile["is_organization"] else profile["last_name"]
+    by_name = world.call("GET", f"/providers?q={name.lower()}&limit=500").json()
+    assert by_name["total"] >= 1, "name search folds case the way the engine does"
+
+    orgs = world.call("GET", "/providers?record_type=organization&limit=5&sort=name").json()
+    assert orgs["items"] and all(p["is_organization"] for p in orgs["items"])
+    assert world.call("GET", "/providers/P-NOBODY-AT-ALL").status_code == 404
+
+
+def test_case_rows_and_audit_rows_name_people_not_ids(world: World) -> None:
+    rows = world.call("GET", "/cases?limit=100", as_="analyst").json()["items"]
+    ours = [c for c in rows if c["created_by_email"] == f"admin-{world.tag}@concordance.example.com"]
+    assert ours and all(c["provider_name"] and c["subject_name"] for c in ours)
+    closed = [c for c in ours if c["status"] == "CLOSED"]
+    assert closed and closed[0]["closed_by_email"] == ours[0]["created_by_email"]
+
+    trail = world.call("GET", f"/audit?actor_user_id={world.analyst_id}&limit=5").json()["items"]
+    assert trail and {r["actor_email"] for r in trail} == {f"analyst-{world.tag}@concordance.example.com"}
+
+
+def test_facets_offer_the_values_on_file(world: World) -> None:
+    facets = world.call("GET", "/sanctions/facets", as_="analyst").json()
+    assert world.authority in facets["source_authorities"]
+    assert facets["states"] == sorted(facets["states"]) and facets["sanction_types"]
+
+
+def test_bulk_review_reports_each_item_and_commits_the_rest(world: World) -> None:
+    [first] = world.by_role("match3")
+    [second] = world.by_role("match4")
+    [done] = world.by_role("match0")  # approved long ago
+    stranger = str(uuid.uuid4())
+
+    response = world.call(
+        "POST", "/matches/bulk", as_="analyst",
+        json={"ids": [first["id"], done["id"], stranger, second["id"], first["id"]],
+              "action": "escalate", "comment": "batch: same surname cluster"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [r["id"] for r in body["results"]] == [first["id"], done["id"], stranger, second["id"]], (
+        "request order, duplicates folded"
+    )
+    by_id = {r["id"]: r for r in body["results"]}
+    assert by_id[first["id"]]["ok"] and by_id[first["id"]]["review_status"] == "ESCALATED"
+    assert by_id[second["id"]]["ok"]
+    assert by_id[done["id"]]["error"]["code"] == "not_pending"
+    assert by_id[stranger]["error"]["code"] == "not_found"
+    assert (body["succeeded"], body["failed"]) == (2, 2)
+
+    handed_back = world.call(
+        "POST", "/matches/bulk", as_="analyst",
+        json={"ids": [first["id"]], "action": "reject", "comment": "no"},
+    ).json()
+    assert handed_back["results"][0]["error"]["code"] == "escalated_to_admin"
+
+    refused = world.call(
+        "POST", "/matches/bulk", json={"ids": [first["id"]], "action": "approve", "comment": "x"}
+    )
+    assert refused.status_code == 422, "approval is never offered in bulk"
+
+    audited = world.call(
+        "GET", f"/audit?entity_type=match_result&entity_id={second['id']}&action=match.escalated"
+    ).json()["items"]
+    assert [row["request_id"] for row in audited] == [response.request_id]
+
+
 def test_a_queued_run_can_be_cancelled_and_the_worker_leaves_it_alone(world: World) -> None:
     queued = world.call("POST", "/reconciliation/run", json={"limit": 5})
     if queued.status_code == 409:
@@ -685,6 +805,43 @@ def test_refresh_rotates_and_a_reused_token_is_refused(world: World) -> None:
     assert stolen.status_code == 401
 
 
+def test_the_browser_session_keeps_its_refresh_token_in_an_httponly_cookie(world: World) -> None:
+    from concordance.api.routers.auth import REFRESH_COOKIE
+
+    login = world.client.post(
+        "/auth/login",
+        json={"email": f"admin-{world.tag}@concordance.example.com", "password": PASSWORD,
+              "transport": "cookie"},
+    )
+    assert login.status_code == 200
+    assert login.json()["refresh_token"] is None, "script never sees the refresh token"
+    set_cookie = login.headers["set-cookie"]
+    assert set_cookie.startswith(f"{REFRESH_COOKIE}=")
+    for attribute in ("HttpOnly", "SameSite=strict", "Path=/api/auth"):
+        assert attribute.lower() in set_cookie.lower(), attribute
+    first = login.cookies[REFRESH_COOKIE]
+
+    def refresh_with(token: str) -> Any:
+        # Sent by hand: the cookie's path is the browser's `/api/auth`, which
+        # the test client, talking to the API directly, never requests.
+        return world.client.post("/auth/refresh", headers={"Cookie": f"{REFRESH_COOKIE}={token}"})
+
+    rotated = refresh_with(first)
+    assert rotated.status_code == 200 and rotated.json()["refresh_token"] is None
+    second = rotated.cookies[REFRESH_COOKIE]
+    assert second != first
+
+    replayed = refresh_with(first)
+    assert replayed.status_code == 401
+    assert f'{REFRESH_COOKIE}=""' in replayed.headers["set-cookie"], "a refused cookie is cleared"
+
+    bare = world.client.post("/auth/refresh")
+    assert bare.status_code == 401 and bare.json()["error"]["code"] == "invalid_refresh_token"
+
+    out = world.client.post("/auth/logout", headers={"Cookie": f"{REFRESH_COOKIE}={second}"})
+    assert out.status_code == 204 and "max-age=0" in out.headers["set-cookie"].lower()
+
+
 def test_every_mutation_left_an_audit_row_with_its_request_id(
     world: World, owner_session: Any
 ) -> None:
@@ -706,7 +863,7 @@ def test_every_mutation_left_an_audit_row_with_its_request_id(
              "AND actor_user_id = ANY(CAST(:u AS uuid[]))"),
         {"u": [world.admin_id, world.analyst_id]},
     ).scalar()
-    assert logins == 3, "two at setup, one for the logout test"
+    assert logins == 4, "two at setup, one each for the logout and cookie tests"
 
     actions = {
         a for (a,) in owner_session.execute(

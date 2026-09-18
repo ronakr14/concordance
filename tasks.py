@@ -30,9 +30,9 @@ PY = str(VENV_PY if VENV_PY.exists() else Path(sys.executable))
 DEFERRED = {
     "up": (10, "Docker packaging"),
     "down": (10, "Docker packaging"),
-    "api": (7, "The FastAPI app"),
-    "web": (8, "The React app"),
 }
+FRONTEND = ROOT / "frontend"
+NPM = "npm.cmd" if os.name == "nt" else "npm"
 
 
 def _run(*argv: str, cwd: Path = ROOT) -> int:
@@ -123,6 +123,24 @@ def sweep(args: list[str]) -> int:
     return _run(*argv)
 
 
+def api(args: list[str]) -> int:
+    v = _vars(args)
+    return _run(PY, "-m", "concordance.cli", "api", "serve", "--reload", "--port", v.get("PORT", "8000"))
+
+
+def web(args: list[str]) -> int:
+    return _run(NPM, "run", "dev", cwd=FRONTEND)
+
+
+def client(args: list[str]) -> int:
+    """Regenerate the web client's types from the API's OpenAPI schema."""
+    return _run(NPM, "run", "api:schema", cwd=FRONTEND)
+
+
+def web_build(args: list[str]) -> int:
+    return _run(NPM, "run", "build", cwd=FRONTEND)
+
+
 def migrate(args: list[str]) -> int:
     v = _vars(args)
     return _run(PY, "-m", "concordance.cli", "db", "upgrade", v.get("REVISION", "head"))
@@ -198,6 +216,10 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "fit": fit,
     "eval": evaluate,
     "sweep": sweep,
+    "api": api,
+    "web": web,
+    "client": client,
+    "web-build": web_build,
     "migrate": migrate,
     "load": load,
     "reconcile": reconcile,
