@@ -15,3 +15,5 @@ reports/
 *.egg-info/
 .coverage
 htmlcov/
+# Playwright: reports/ holds the rest
+frontend/test-results/

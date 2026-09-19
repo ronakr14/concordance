@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `8 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10; GATE 8's in-browser walkthrough items are accepted pending a manual pass) · a portfolio artifact exists from the end of Stage 3.
+Progress: `8 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -1120,7 +1120,7 @@ generated against a complete schema.
 - [x] Error boundaries per route
 - [x] Toast notifications for mutations
 - [x] Layout shell: sidebar navigation across Dashboard, Providers, Sanctions, Queue, Cases, Audit ⭐
-- [ ] Responsive down to ~1280px without breakage — layouts use wrapping grids and scroll containers; not yet checked at 1280px in a browser
+- [x] Responsive down to ~1280px without breakage — the e2e suite runs at 1280×800 and fails if any screen's page body scrolls sideways (dashboard, providers, provider profile, sanctions, upload, queue, investigation, cases, case detail, audit); screenshots of each in `reports/e2e/results`. The evidence table's m / u column no longer wraps at that width
 - [x] Light and dark themes, system default, no flash on load — chart and status colours from the validated data-viz palette, checked with its validator in both modes
 
 ### Login
@@ -1210,12 +1210,18 @@ generated against a complete schema.
 - [x] Deep link from a case or match into its filtered audit view
 
 ### GATE 8
-- [ ] Full workflow driven in the browser: login → upload → **map columns** → commit → run → review → approve → case created → visible in audit ⭐ — every call the screens make verified through the dev proxy with cookie auth; not yet clicked through in a browser (the Chrome extension was not connected)
-- [ ] An organization sanction record reviewed end to end with the organization field set rendered ⭐
-- [ ] Analyst account cannot see or invoke admin-only actions ⭐ — enforced in code and by the API; not yet observed in a browser
-- [ ] Every screen has a working loading, empty and error state — built on every screen; not yet observed in a browser
+
+Driven by a Playwright suite (`frontend/e2e`, `make e2e`) in the installed Chrome at
+1280×800, against the real API, worker and database. It makes its own users and a fresh
+workbook (`scripts/e2e_fixture.py`) under a run-named source authority and removes them
+after; `sweep` cleans up after an interrupted run. 7/7 green.
+
+- [x] Full workflow driven in the browser: login → upload → **map columns** → commit → run → review → approve → case created → visible in audit ⭐ — non-canonical headers mapped by hand; commit refused while no name column is mapped; the case opened by approval found in the audit log
+- [x] An organization sanction record reviewed end to end with the organization field set rendered ⭐ — Legal name, DBA and EIN shown, no date-of-birth or first-name rows; rejected with a comment
+- [x] Analyst account cannot see or invoke admin-only actions ⭐ — no Audit nav, `/audit` redirects, no Approve button and the `a` shortcut is inert, no Close case or audit links on a case; escalation works
+- [x] Every screen has a working loading, empty and error state — observed on the queue (skeleton, now announced with `aria-busy`), an unmatched filter, and a failing dashboard request with its retry
 - [x] Frontend builds clean: `tsc --noEmit` and the production Vite build both pass — no chunk over 500 kB after route splitting
-- [ ] No console errors during the full workflow
+- [x] No console errors during the full workflow — every test fails on a console error or uncaught exception. The walkthrough found one: each signed-out page load tried a refresh the server had to refuse, and logged a 401. Boot now restores a session only when a `localStorage` flag says one was live (no credential in it; the refresh token stays in the httpOnly cookie)
 - [x] `npm run dev` proxies to the locally running API without CORS errors — same origin through `/api`, so there is no CORS at all
 - [x] `npm run build` output served statically also works — proves it is not dev-server-dependent (nginx packaging comes in Stage 10) — `vite preview`: deep links fall back to the app, `/api` proxies
 

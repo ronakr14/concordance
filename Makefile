@@ -8,13 +8,13 @@ RUN := $(PY) tasks.py
 VARS := $(foreach v,CORRUPTION PROVIDERS SANCTIONS SEED LIMIT SCENARIO STRATEGY LEVELS STRATEGIES WORKERS MAX_CANDIDATES PORT,$(if $($(v)),$(v)=$($(v))))
 
 .PHONY: seed verify inspect fit eval sweep test test-unit cov lint fmt typecheck clean \
-        up down migrate load api worker web web-build client help
+        up down migrate load api worker web web-build client e2e help
 
 help:
 	@$(RUN) help
 
 seed verify inspect fit eval sweep reconcile worker migrate load test test-unit cov lint fmt typecheck clean \
-api web web-build client:
+api web web-build client e2e:
 	@$(RUN) $@ $(VARS)
 
 # Declared now, real at the stage named. Failing loudly beats a confusing error.

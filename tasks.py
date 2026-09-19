@@ -141,6 +141,11 @@ def web_build(args: list[str]) -> int:
     return _run(NPM, "run", "build", cwd=FRONTEND)
 
 
+def e2e(args: list[str]) -> int:
+    """The GATE 8 walkthrough in Chrome. Needs `make api`, `make worker` and `make web` running."""
+    return _run(NPM, "run", "e2e", cwd=FRONTEND)
+
+
 def migrate(args: list[str]) -> int:
     v = _vars(args)
     return _run(PY, "-m", "concordance.cli", "db", "upgrade", v.get("REVISION", "head"))
@@ -220,6 +225,7 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "web": web,
     "client": client,
     "web-build": web_build,
+    "e2e": e2e,
     "migrate": migrate,
     "load": load,
     "reconcile": reconcile,
