@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     MAX_CANDIDATES_PER_RECORD: int = Field(default=50, ge=1, le=1000)
     TARGET_PRECISION: float = Field(default=0.99, gt=0.0, le=1.0)
     RANDOM_SEED: int = 20260914
+    #: Share of auto-rejected results (with candidates) drawn into the review
+    #: queue as a random audit. The only unbiased labels the system gets below
+    #: the reject threshold. 0 turns the audit off.
+    AUDIT_RATE: float = Field(default=0.02, ge=0.0, le=0.5)
+    #: `concordance retune` refuses to fit on fewer labelled pairs than this,
+    #: or on fewer than a tenth of it of either class.
+    RETUNE_MIN_LABELS: int = Field(default=100, ge=10, le=100_000)
 
     # --- reserved for later stages; optional until then --------------------
     DATABASE_URL: str | None = None  # Stage 5

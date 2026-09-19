@@ -66,6 +66,9 @@ class RunStatus(StrEnum):
 class FittedFrom(StrEnum):
     EM = "em"
     SUPERVISED = "supervised"
+    #: EM over a run's candidate pairs with reviewer-labelled pairs clamped to
+    #: their label. What `concordance retune` writes.
+    SEMI_SUPERVISED = "semi_supervised"
     MANUAL = "manual"
 
 
@@ -143,6 +146,8 @@ class LabKind(StrEnum):
 
     SWEEP = "sweep"
     LLM = "llm"
+    #: Simulated review rounds: label, retune, rescore, repeat.
+    FEEDBACK = "feedback"
 
 
 class FeedbackLabel(StrEnum):

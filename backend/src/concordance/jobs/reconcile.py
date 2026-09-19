@@ -29,8 +29,10 @@ says why - not an empty table.
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -49,8 +51,11 @@ from concordance.db.models import SanctionRecord as SanctionRecordRow
 from concordance.db.models import ScoringConfig as ScoringConfigRow
 from concordance.db.repositories.audit import AuditRepository
 from concordance.db.repositories.cases import CaseRepository
+from concordance.db.repositories.configs import ConfigRepository
 from concordance.db.repositories.matches import MatchRepository
+from concordance.domain import Outcome
 from concordance.logging_setup import get_logger
+from concordance.matching.comparators import ModelKind
 from concordance.matching.engine import ReconciliationEngine
 from concordance.matching.scorer import Route
 from concordance.matching.scoring_config import ScoringConfig
@@ -181,23 +186,31 @@ def ensure_scoring_config(
     row is immutable from then on - refitting means a new version, never an edit.
     """
     repo = MatchRepository(session)
+    configs = ConfigRepository(session)
     if version:
         row = repo.get_config(version)
         if row is None:
             raise LookupError(f"no scoring config {version!r} in the database")
         return row
 
-    row = repo.latest_config()
+    row = configs.active()
     if row is not None:
         return row
 
-    path = _latest_config_file(settings)
-    if path is None:
-        raise LookupError(
-            "no scoring config in the database and none on disk - fit one first"
-        )
-    loaded = ScoringConfig.read(path)
-    return import_scoring_config(session, loaded, notes=f"imported from {path.name}")
+    # Nothing activated yet: the first config the system ever uses becomes the
+    # active one, so from then on only an explicit activation changes it.
+    row = repo.latest_config()
+    if row is None:
+        path = _latest_config_file(settings)
+        if path is None:
+            raise LookupError(
+                "no scoring config in the database and none on disk - fit one first"
+            )
+        loaded = ScoringConfig.read(path)
+        row = import_scoring_config(session, loaded, notes=f"imported from {path.name}")
+    configs.activate(row, actor_id=None, reason="first config used by a run")
+    session.commit()
+    return row
 
 
 def import_scoring_config(
@@ -275,6 +288,7 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
             "request": request.as_payload(),
             "provider_snapshot_hash": stream.store.snapshot_hash(),
             "sanction_snapshot_hash": stream.store.sanction_snapshot_hash(),
+            "audit_rate": settings.AUDIT_RATE,
         }
     except Exception as exc:
         # A queued run that cannot even start must still end up saying so, or
@@ -303,7 +317,7 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
         engine_version=engine.engine_version,
     )
 
-    writer = _ResultWriter(session, run.id)
+    writer = _ResultWriter(session, run.id, audit_rate=settings.AUDIT_RATE)
     report = RunReport(
         run_id=run.id,
         status=str(RunStatus.RUNNING),
@@ -357,7 +371,9 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
         run.status = str(RunStatus.COMPLETED)
     run.finished_at = datetime.now(UTC)
     _finalize(run, engine)
+    patterns = ConfigRepository(session).write_patterns(run.id, writer.tally)
     session.commit()
+    log.info("reconcile.patterns", run_id=str(run.id), patterns=patterns, pairs=writer.tally.total())
 
     report.status = run.status
     report.counters = engine.counters.as_dict()
@@ -483,9 +499,14 @@ class _ResultWriter:
     record as far as a reviewer is concerned.
     """
 
-    def __init__(self, session: Session, run_id: uuid.UUID) -> None:
+    def __init__(self, session: Session, run_id: uuid.UUID, audit_rate: float = 0.0) -> None:
         self.session = session
         self.run_id = run_id
+        self.audit_rate = audit_rate
+        self.audited = 0
+        #: Every candidate pair's (model, vector), counted. Written to
+        #: `run_patterns` at the end: the population a retune fits on.
+        self.tally: Counter[tuple[ModelKind, tuple[int, ...]]] = Counter()
         self.matches = MatchRepository(session)
         self.cases = CaseRepository(session)
         self.audit = AuditRepository(session)
@@ -575,8 +596,10 @@ class _ResultWriter:
             route=str(_ROUTE_TO_DB[result.route]),
             llm_call_id=self._llm_call_id(result, adjudicator),
             explanation=self._explanation(result),
+            audit_sampled=self._audited(result),
         )
         self.session.add(row)
+        self.tally.update(result.pairs)
 
         for candidate in result.candidates:
             self._pending_candidates.append(
@@ -600,6 +623,21 @@ class _ResultWriter:
         self._supersede(identity, row)
         self._current[identity] = row.id
         return row
+
+    def _audited(self, result: Any) -> bool:
+        """Whether this auto-reject is drawn into the random audit.
+
+        A hash of the run and the record rather than a random draw, so the
+        sample is reproducible and the inclusion probability is exactly the
+        rate: every auto-reject with at least one candidate has the same
+        chance, whatever its confidence. A record with no candidate has nothing
+        a reviewer could approve, so it is never drawn.
+        """
+        if self.audit_rate <= 0 or result.decision is not Outcome.NO_MATCH or not result.candidates:
+            return False
+        drawn = audit_draw(self.run_id, result.record_id) < self.audit_rate
+        self.audited += drawn
+        return drawn
 
     def _record_ai_decision(self, row: MatchResult) -> None:
         """An LLM decided this one; the audit trail says so, with the system as actor.
@@ -730,3 +768,9 @@ __all__ = [
     "import_scoring_config",
     "reconcile",
 ]
+
+
+def audit_draw(run_id: uuid.UUID, record_id: str) -> float:
+    """A uniform number in [0, 1) fixed by the run and the record."""
+    digest = hashlib.sha256(f"audit:{run_id}:{record_id}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") / float(1 << 64)

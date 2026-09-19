@@ -44,6 +44,9 @@ def list_matches(
     conflict: Annotated[
         bool | None, Query(description="Only results involved in a conflict on a live case.")
     ] = None,
+    audit: Annotated[
+        bool | None, Query(description="Only results drawn into the random audit of auto-rejects.")
+    ] = None,
     date_from: date | None = None,
     date_to: date | None = None,
     include_superseded: Annotated[
@@ -63,6 +66,7 @@ def list_matches(
         sanction_type=sanction_type,
         is_organization=None if record_type is None else record_type == "organization",
         conflict=conflict,
+        audit=audit,
         date_from=date_from,
         date_to=date_to,
         include_superseded=include_superseded,

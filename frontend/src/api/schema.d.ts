@@ -1837,6 +1837,12 @@ export interface components {
             adjudication?: components["schemas"]["AdjudicationOut"] | null;
             /** Approved Provider Id */
             approved_provider_id: string | null;
+            /**
+             * Audit Sampled
+             * @description Drawn into the random audit of auto-rejects: review it even though the engine said no match.
+             * @default false
+             */
+            audit_sampled?: boolean;
             /** @description The thresholds of the scoring config that decided this result. */
             band?: components["schemas"]["BandOut"] | null;
             /** Calibrated Confidence */
@@ -1915,6 +1921,12 @@ export interface components {
         MatchListItemOut: {
             /** Approved Provider Id */
             approved_provider_id: string | null;
+            /**
+             * Audit Sampled
+             * @description Drawn into the random audit of auto-rejects: review it even though the engine said no match.
+             * @default false
+             */
+            audit_sampled?: boolean;
             /** Calibrated Confidence */
             calibrated_confidence: number | null;
             /** Chosen Provider Id */
@@ -1974,6 +1986,12 @@ export interface components {
         MatchOut: {
             /** Approved Provider Id */
             approved_provider_id: string | null;
+            /**
+             * Audit Sampled
+             * @description Drawn into the random audit of auto-rejects: review it even though the engine said no match.
+             * @default false
+             */
+            audit_sampled?: boolean;
             /** Calibrated Confidence */
             calibrated_confidence: number | null;
             /** Chosen Provider Id */
@@ -2252,6 +2270,12 @@ export interface components {
         ProviderMatchOut: {
             /** Approved Provider Id */
             approved_provider_id: string | null;
+            /**
+             * Audit Sampled
+             * @description Drawn into the random audit of auto-rejects: review it even though the engine said no match.
+             * @default false
+             */
+            audit_sampled?: boolean;
             /** Calibrated Confidence */
             calibrated_confidence: number | null;
             /** Candidate Posterior */
@@ -2388,7 +2412,7 @@ export interface components {
             max_candidates?: number | null;
             /**
              * Scoring Config Id
-             * @description Defaults to the most recently fitted config.
+             * @description Defaults to the active config (the newest `config_activations` row).
              */
             scoring_config_id?: string | null;
             /**
@@ -2402,6 +2426,8 @@ export interface components {
         RunOut: {
             /** Ambiguous Count */
             ambiguous_count: number;
+            /** Audit Rate */
+            audit_rate?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -3383,6 +3409,8 @@ export interface operations {
                 record_type?: ("individual" | "organization") | null;
                 /** @description Only results involved in a conflict on a live case. */
                 conflict?: boolean | null;
+                /** @description Only results drawn into the random audit of auto-rejects. */
+                audit?: boolean | null;
                 date_from?: string | null;
                 date_to?: string | null;
                 /** @description Include results a later run replaced (Q5). */

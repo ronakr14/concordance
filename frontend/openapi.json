@@ -2837,6 +2837,12 @@
             ],
             "title": "Approved Provider Id"
           },
+          "audit_sampled": {
+            "default": false,
+            "description": "Drawn into the random audit of auto-rejects: review it even though the engine said no match.",
+            "title": "Audit Sampled",
+            "type": "boolean"
+          },
           "band": {
             "anyOf": [
               {
@@ -3066,6 +3072,12 @@
             ],
             "title": "Approved Provider Id"
           },
+          "audit_sampled": {
+            "default": false,
+            "description": "Drawn into the random audit of auto-rejects: review it even though the engine said no match.",
+            "title": "Audit Sampled",
+            "type": "boolean"
+          },
           "calibrated_confidence": {
             "anyOf": [
               {
@@ -3275,6 +3287,12 @@
               }
             ],
             "title": "Approved Provider Id"
+          },
+          "audit_sampled": {
+            "default": false,
+            "description": "Drawn into the random audit of auto-rejects: review it even though the engine said no match.",
+            "title": "Audit Sampled",
+            "type": "boolean"
           },
           "calibrated_confidence": {
             "anyOf": [
@@ -4380,6 +4398,12 @@
             ],
             "title": "Approved Provider Id"
           },
+          "audit_sampled": {
+            "default": false,
+            "description": "Drawn into the random audit of auto-rejects: review it even though the engine said no match.",
+            "title": "Audit Sampled",
+            "type": "boolean"
+          },
           "calibrated_confidence": {
             "anyOf": [
               {
@@ -4821,7 +4845,7 @@
                 "type": "null"
               }
             ],
-            "description": "Defaults to the most recently fitted config.",
+            "description": "Defaults to the active config (the newest `config_activations` row).",
             "title": "Scoring Config Id"
           },
           "strategy": {
@@ -4841,6 +4865,17 @@
           "ambiguous_count": {
             "title": "Ambiguous Count",
             "type": "integer"
+          },
+          "audit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Rate"
           },
           "created_at": {
             "format": "date-time",
@@ -7266,6 +7301,24 @@
               ],
               "description": "Only results involved in a conflict on a live case.",
               "title": "Conflict"
+            }
+          },
+          {
+            "description": "Only results drawn into the random audit of auto-rejects.",
+            "in": "query",
+            "name": "audit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only results drawn into the random audit of auto-rejects.",
+              "title": "Audit"
             }
           },
           {

@@ -232,7 +232,8 @@ class RunIn(ApiModel):
         description="deterministic, fuzzy, probabilistic, or probabilistic_llm.",
     )
     scoring_config_id: uuid.UUID | None = Field(
-        default=None, description="Defaults to the most recently fitted config."
+        default=None,
+        description="Defaults to the active config (the newest `config_activations` row).",
     )
     file_id: uuid.UUID | None = Field(
         default=None,
@@ -261,6 +262,7 @@ class RunOut(ApiModel):
     llm_calls: int
     llm_tokens: int
     llm_cost_usd: float
+    audit_rate: float | None = None
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
@@ -326,6 +328,11 @@ class MatchOut(ApiModel):
     reviewed_at: datetime | None
     reviewer_comment: str | None
     superseded_by: uuid.UUID | None
+    audit_sampled: bool = Field(
+        default=False,
+        description="Drawn into the random audit of auto-rejects: review it even though "
+        "the engine said no match.",
+    )
     created_at: datetime
 
 

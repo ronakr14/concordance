@@ -40,6 +40,7 @@ class MatchFilter:
     sanction_type: str | None = None
     is_organization: bool | None = None
     conflict: bool | None = None
+    audit: bool | None = None
     date_from: date | None = None
     date_to: date | None = None
     include_superseded: bool = False
@@ -162,6 +163,8 @@ class MatchRepository:
             opened_on = select(Case.match_result_id).where(*live_conflict)
             involved = or_(MatchResult.id.in_(disagreeing), MatchResult.id.in_(opened_on))
             stmt = stmt.where(involved if where.conflict else ~involved)
+        if where.audit is not None:
+            stmt = stmt.where(MatchResult.audit_sampled.is_(where.audit))
 
         key = MatchResult.created_at if where.sort == "date" else MatchResult.calibrated_confidence
         # Nulls count as the lowest value in both directions: last when the

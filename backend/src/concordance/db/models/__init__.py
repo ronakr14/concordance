@@ -19,10 +19,12 @@ from concordance.db.models.master import (
     SanctionRecord,
 )
 from concordance.db.models.matching import (
+    ConfigActivation,
     LlmCall,
     MatchCandidate,
     MatchResult,
     ReconciliationRun,
+    RunPattern,
     ScoringConfig,
 )
 from concordance.db.models.workflow import AuditLog, Case
@@ -32,6 +34,7 @@ __all__ = [
     "Base",
     "Case",
     "ColumnMapping",
+    "ConfigActivation",
     "EvalRun",
     "FeedbackEvent",
     "GroundTruth",
@@ -44,6 +47,7 @@ __all__ = [
     "ProviderBlockKey",
     "ReconciliationRun",
     "RefreshToken",
+    "RunPattern",
     "SanctionFile",
     "SanctionRecord",
     "ScoringConfig",

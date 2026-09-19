@@ -148,6 +148,10 @@ class MatchResult:
     margin: float | None = None
     candidates: tuple[ScoredCandidate, ...] = ()
     notes: tuple[str, ...] = ()
+    #: Every scored pair's model and comparison vector, not only the top-k
+    #: kept in `candidates`. A run tallies these into `run_patterns`, which is
+    #: the population a retune fits EM on. Not part of the decision.
+    pairs: tuple[tuple[ModelKind, ComparisonVector], ...] = ()
 
     @property
     def top(self) -> ScoredCandidate | None:
@@ -326,7 +330,7 @@ class MatchingEngine:
         # on every run and a replay reproduces the ranking exactly.
         scored.sort(key=lambda c: (-c.confidence, -c.match_weight, c.provider_id))
         ranked = tuple(replace(c, rank=i + 1) for i, c in enumerate(scored[: self.top_k]))
-        return self._route(record, ranked)
+        return replace(self._route(record, ranked), pairs=tuple((c.kind, c.vector) for c in scored))
 
     def _route(
         self,

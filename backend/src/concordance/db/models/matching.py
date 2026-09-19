@@ -23,12 +23,15 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
+    SmallInteger,
     String,
     Text,
     text,
@@ -78,11 +81,82 @@ class ScoringConfig(UUIDPrimaryKeyMixin, Base):
         String(20), nullable=False, server_default=FittedFrom.EM
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    #: The config this one was retuned from. `None` for an EM fit, which
+    #: starts from nothing but data.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("scoring_configs.id", ondelete="SET NULL")
+    )
+    #: What the fit was measured to do when it was written: labels used, the
+    #: holdout it was judged on, and the parent's numbers on that same holdout.
+    #: Written once with the row, like everything else on it.
+    metrics: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
 
     __table_args__ = (
         check_values("fitted_from", FittedFrom),
         Index("uq_scoring_configs_version", "version", unique=True),
+        Index("ix_scoring_configs_parent_id", "parent_id"),
     )
+
+
+class ConfigActivation(CreatedAtMixin, Base):
+    """One decision to make a scoring config the one new runs use.
+
+    The active config is the newest row here. A history table rather than an
+    `is_active` flag, because the flag would be the one mutable column on an
+    otherwise immutable row, and because "which config was live on the 3rd,
+    and who switched it" is an audit question with a one-query answer here and
+    no answer at all from a flag.
+    """
+
+    __tablename__ = "config_activations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scoring_config_id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("scoring_configs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    activated_by: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reason: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_config_activations_created_at", "created_at"),
+        Index("ix_config_activations_scoring_config_id", "scoring_config_id"),
+    )
+
+
+class RunPattern(Base):
+    """How often one comparison vector occurred among one run's candidate pairs.
+
+    Every blocked pair, not only the top candidates `match_candidates` keeps.
+    This is what retuning fits on: EM's `u` describes all candidate pairs, most
+    of them easy non-matches, so a fit on the handful a reviewer saw would be a
+    fit on a different population. Stored as distinct vectors with counts, the
+    same compression EM itself uses, so a 250,000-pair run is a few thousand
+    rows.
+    """
+
+    __tablename__ = "run_patterns"
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        postgresql.UUID(as_uuid=True),
+        ForeignKey("reconciliation_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    pattern: Mapped[list[int]] = mapped_column(
+        postgresql.ARRAY(SmallInteger), nullable=False
+    )
+    n: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (PrimaryKeyConstraint("run_id", "kind", "pattern", name="pk_run_patterns"),)
 
 
 class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
@@ -136,6 +210,9 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
     #: The queue row that executes this run, when it was started through the
     #: API. A run started from the CLI has none.
     job_id: Mapped[int | None] = mapped_column(BigInteger)
+    #: The share of auto-rejected results with candidates drawn into the audit
+    #: sample. `None` on runs from before audit sampling existed.
+    audit_rate: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -237,6 +314,13 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         postgresql.UUID(as_uuid=True), ForeignKey("match_results.id", ondelete="SET NULL")
     )
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Drawn into the random audit of auto-rejects. Nobody reviews a NO_MATCH
+    #: by default, so without this the region where missed sanctions hide
+    #: would never get a label; with it, those labels arrive with a known
+    #: inclusion probability (the run's `audit_rate`).
+    audit_sampled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
     __table_args__ = (
         check_values("decision", Decision),
@@ -275,6 +359,13 @@ class MatchResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_where=text("superseded_by IS NULL"),
         ),
         Index("ix_match_results_created_at", "created_at"),
+        # The audit sample is a few percent of auto-rejects; the queue's audit
+        # filter reads only those.
+        Index(
+            "ix_match_results_current_audit",
+            "review_status",
+            postgresql_where=text("audit_sampled AND superseded_by IS NULL"),
+        ),
         # A provider's compliance status asks "is this provider the engine's
         # choice on a current, undecided result" once per directory row.
         Index(
@@ -326,9 +417,11 @@ class MatchCandidate(Base):
 
 
 __all__ = [
+    "ConfigActivation",
     "LlmCall",
     "MatchCandidate",
     "MatchResult",
     "ReconciliationRun",
+    "RunPattern",
     "ScoringConfig",
 ]

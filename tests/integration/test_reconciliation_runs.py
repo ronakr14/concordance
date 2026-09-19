@@ -195,6 +195,63 @@ def test_a_run_records_the_provenance_replay_needs(scenario: Fixture) -> None:
         ), "every record landed in exactly one outcome"
 
 
+def test_a_run_stores_its_whole_candidate_pair_tally(scenario: Fixture) -> None:
+    """Every blocked pair, not only the top-k kept as candidates: retuning fits on it."""
+    from sqlalchemy import func, select
+
+    from concordance.db.models import MatchCandidate, MatchResult
+    from concordance.db.repositories.configs import ConfigRepository
+    from concordance.db.session import session_scope
+    from concordance.matching.comparators import LEVEL_COUNTS
+
+    with session_scope(scenario.settings) as session:
+        tally = ConfigRepository(session).patterns(scenario.run_a)
+        stored = session.scalar(
+            select(func.count())
+            .select_from(MatchCandidate)
+            .join(MatchResult, MatchResult.id == MatchCandidate.match_result_id)
+            .where(MatchResult.run_id == scenario.run_a)
+        )
+    assert tally, "the run wrote no pattern tally"
+    pairs = sum(n for rows in tally.values() for _, n in rows)
+    assert pairs >= (stored or 0) > 0
+    for kind, rows in tally.items():
+        sizes = LEVEL_COUNTS[kind]
+        for vector, n in rows:
+            assert n > 0
+            assert len(vector) == len(sizes)
+            assert all(0 <= level < size for level, size in zip(vector, sizes, strict=True))
+
+
+def test_the_audit_sample_draws_only_auto_rejects_that_had_candidates(scenario: Fixture) -> None:
+    from sqlalchemy import select
+
+    from concordance.db.models import MatchResult, ReconciliationRun
+    from concordance.db.session import session_scope
+
+    with session_scope(scenario.settings) as session:
+        run = session.get(ReconciliationRun, scenario.run_a)
+        assert run is not None and run.audit_rate == scenario.settings.AUDIT_RATE
+        drawn = session.scalars(
+            select(MatchResult).where(
+                MatchResult.run_id == scenario.run_a, MatchResult.audit_sampled.is_(True)
+            )
+        ).all()
+    assert all(r.decision == "NO_MATCH" and r.raw_match_weight is not None for r in drawn)
+
+
+def test_a_newer_config_does_not_score_runs_until_it_is_activated(scenario: Fixture) -> None:
+    """The strict config the fixture wrote is the newest row, and it is not live."""
+    from concordance.db.repositories.configs import ConfigRepository
+    from concordance.db.session import session_scope
+    from concordance.jobs.reconcile import ensure_scoring_config
+
+    with session_scope(scenario.settings) as session:
+        active = ensure_scoring_config(session, scenario.settings)
+        assert active.id != scenario.config_b_id
+        assert ConfigRepository(session).active() is not None
+
+
 def test_candidates_are_persisted_with_their_evidence(scenario: Fixture) -> None:
     """The Investigation UI renders these; a result without them explains nothing."""
     from concordance.db.repositories.matches import MatchRepository
