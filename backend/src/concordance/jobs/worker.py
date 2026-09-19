@@ -19,7 +19,10 @@ purpose:
    fail with the work, or a dead job would look pending forever.
 
 Stale locks are reclaimed by whichever worker notices first, which is what
-makes a killed worker's job recoverable without an operator. Graceful shutdown
+makes a killed worker's job recoverable without an operator. The same path
+covers a lost connection: the loop backs off and carries on rather than exit,
+and a job whose outcome could not be recorded is left `RUNNING` until its lock
+goes stale and it is claimed again. Graceful shutdown
 is the mirror image: on SIGTERM the loop stops claiming but finishes the job in
 hand, so a rolling restart never abandons work mid-record.
 """
@@ -34,6 +37,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+from sqlalchemy.exc import OperationalError
 
 from concordance.config import Settings, get_settings
 from concordance.db.enums import JobStatus
@@ -55,6 +60,11 @@ DEFAULT_POLL_SECONDS = 2.0
 #: How often to look for jobs abandoned by a dead worker.
 DEFAULT_RECLAIM_SECONDS = 60.0
 
+#: Backoff after a lost database connection: doubles from the first value per
+#: consecutive failure, capped at the second. A hosted database drops idle
+#: connections and blips on DNS; neither should take the worker down.
+DB_RETRY_SECONDS = (1.0, 30.0)
+
 
 def default_worker_name() -> str:
     return f"{socket.gethostname()}:{os.getpid()}"
@@ -69,6 +79,7 @@ class WorkerStats:
     reclaimed: int = 0
     scheduled: int = 0
     idle_polls: int = 0
+    db_errors: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +90,7 @@ class WorkerStats:
             "reclaimed": self.reclaimed,
             "scheduled": self.scheduled,
             "idle_polls": self.idle_polls,
+            "db_errors": self.db_errors,
         }
 
 
@@ -133,11 +145,28 @@ class Worker:
             schedule=[e.kind for e in self.scheduler.entries],
         )
         idle_since: float | None = None
+        failures = 0
         while not self._stopping:
-            self._reclaim_stale()
-            self._enqueue_scheduled()
+            try:
+                self._reclaim_stale()
+                self._enqueue_scheduled()
+                job = self.run_once()
+            except OperationalError as exc:
+                failures += 1
+                self.stats.db_errors += 1
+                first, cap = DB_RETRY_SECONDS
+                delay = min(cap, first * 2 ** (failures - 1))
+                log.warning(
+                    "worker.db_unavailable",
+                    worker=self.name,
+                    attempt=failures,
+                    retry_in=delay,
+                    error=str(exc.orig or exc).splitlines()[0],
+                )
+                time.sleep(delay)
+                continue
+            failures = 0
 
-            job = self.run_once()
             if job is not None:
                 idle_since = None
                 if self.max_jobs is not None and self.stats.claimed >= self.max_jobs:

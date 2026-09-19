@@ -1357,6 +1357,7 @@ failure here is unambiguously a packaging failure — which is exactly why this 
 - [ ] Containers run as non-root
 - [ ] Image sizes sane; no build toolchain in final layers
 - [ ] Graceful shutdown verified for api and worker
+- [x] Worker survives a lost database connection — found during the Stage 8 walkthrough setup, when Neon closed the connection mid-claim and the worker exited. The loop now backs off (1 s doubling to 30 s, reset on success) and carries on; a job whose outcome was not recorded stays `RUNNING` until the stale-lock reclaim picks it up. `test_worker_resilience.py`
 - [ ] Log output readable and structured in `docker compose logs`
 
 ### Documentation
