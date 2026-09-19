@@ -295,6 +295,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Experiments
+         * @description Recent experiments of both kinds, newest first.
+         */
+        get: operations["experiments_lab_experiments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Llm
+         * @description Queue the routed-versus-everything LLM sample on a finished sweep. Admin only.
+         */
+        post: operations["llm_lab_llm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Results
+         * @description Every number the Lab page draws, for one sweep and the LLM run that extends it.
+         */
+        get: operations["results_lab_results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep
+         * @description Queue a corruption sweep. Admin only.
+         */
+        post: operations["sweep_lab_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/matches": {
         parameters: {
             query?: never;
@@ -904,6 +984,19 @@ export interface components {
             /** Succeeded */
             succeeded: number;
         };
+        /** CalibrationMetricsOut */
+        CalibrationMetricsOut: {
+            /** Bins */
+            bins: components["schemas"]["ReliabilityBinOut"][];
+            /** Brier */
+            brier: number | null;
+            /** Ece */
+            ece: number | null;
+            /** Mce */
+            mce: number | null;
+            /** N */
+            n: number;
+        };
         /** CandidateOut */
         CandidateOut: {
             /** Blocking Keys */
@@ -1400,6 +1493,302 @@ export interface components {
             rejected: number;
             /** Sanction Records */
             sanction_records: number;
+        };
+        /**
+         * LabCalibrationOut
+         * @description The fit's holdout, before and after isotonic calibration, at one level.
+         */
+        LabCalibrationOut: {
+            /** Achieved Precision */
+            achieved_precision: number | null;
+            after: components["schemas"]["CalibrationMetricsOut"];
+            before: components["schemas"]["CalibrationMetricsOut"];
+            /** Grey Band Fraction */
+            grey_band_fraction: number | null;
+            /** Level */
+            level: number | null;
+            /** Model */
+            model: string;
+            /** N Holdout */
+            n_holdout: number | null;
+            /** T Auto Accept */
+            t_auto_accept: number | null;
+            /** T Auto Reject */
+            t_auto_reject: number | null;
+            /** Target Precision */
+            target_precision: number | null;
+        };
+        /**
+         * LabCellOut
+         * @description One strategy at one corruption level.
+         */
+        LabCellOut: {
+            /** Accuracy */
+            accuracy: number | null;
+            /** Ambiguous Accuracy */
+            ambiguous_accuracy: number | null;
+            /** Blocking Recall */
+            blocking_recall: number | null;
+            /** Brier */
+            brier: number | null;
+            /** Ece */
+            ece: number | null;
+            /** F1 */
+            f1: number | null;
+            /** False Negatives */
+            false_negatives: number;
+            /** False Positives */
+            false_positives: number;
+            /** Grey Band Fraction */
+            grey_band_fraction: number | null;
+            /** Level */
+            level: number | null;
+            /** Precision */
+            precision: number | null;
+            /** Recall */
+            recall: number | null;
+            /** Records */
+            records: number | null;
+            /** Scenarios */
+            scenarios: components["schemas"]["LabScenarioOut"][];
+            /** Strategy */
+            strategy: string;
+            /** Wrong Provider */
+            wrong_provider: number | null;
+        };
+        /** LabLlmIn */
+        LabLlmIn: {
+            /**
+             * Levels
+             * @description Omitted: 0.3, 0.5 and 0.7.
+             */
+            levels?: number[] | null;
+            /**
+             * Sample
+             * @description Records sampled per stratum. Omitted: 100.
+             */
+            sample?: number | null;
+            /**
+             * Sweep Id
+             * @description The sweep to extend. Omitted: the newest completed one.
+             */
+            sweep_id?: string | null;
+        };
+        /**
+         * LabLlmLevelOut
+         * @description Routed versus LLM-on-everything at one level, measured on a sample.
+         */
+        LabLlmLevelOut: {
+            /** Config Id */
+            config_id: string | null;
+            cost: components["schemas"]["LlmCostOut"];
+            /** Level */
+            level: number | null;
+            /** Notes */
+            notes: string[];
+            population: components["schemas"]["LlmPopulationOut"];
+            sample: components["schemas"]["LlmSampleOut"];
+            /** Sample Per Stratum */
+            sample_per_stratum: number;
+            /** Strategies */
+            strategies: {
+                [key: string]: components["schemas"]["LlmStrategyOut"];
+            };
+        };
+        /** LabPriceOut */
+        LabPriceOut: {
+            /** Completion Per Million */
+            completion_per_million: number;
+            /** Model */
+            model: string;
+            /** Placeholder */
+            placeholder: boolean;
+            /** Prompt Per Million */
+            prompt_per_million: number;
+        };
+        /** LabResultsOut */
+        LabResultsOut: {
+            /** Calibration */
+            calibration: components["schemas"]["LabCalibrationOut"][];
+            /** Cells */
+            cells: components["schemas"]["LabCellOut"][];
+            /** @description Whichever experiment is queued or running now. */
+            live: components["schemas"]["LabRunOut"] | null;
+            /** Llm */
+            llm: components["schemas"]["LabLlmLevelOut"][];
+            /** Llm Enabled */
+            llm_enabled: boolean;
+            /** @description The LLM experiment extending that sweep, if any. */
+            llm_run: components["schemas"]["LabRunOut"] | null;
+            price: components["schemas"]["LabPriceOut"];
+            /** @description The sweep drawn: the newest completed one by default. */
+            sweep: components["schemas"]["LabRunOut"] | null;
+        };
+        /**
+         * LabRunOut
+         * @description One Lab experiment. `progress` is levels for a sweep, model calls for an LLM run.
+         */
+        LabRunOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Job Id */
+            job_id: number | null;
+            /** Kind */
+            kind: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Parent Id */
+            parent_id: string | null;
+            /** Progress */
+            progress: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+        };
+        /** LabScenarioOut */
+        LabScenarioOut: {
+            /** Accuracy */
+            accuracy: number | null;
+            /** F1 */
+            f1: number | null;
+            /** N */
+            n: number;
+            /** Precision */
+            precision: number | null;
+            /** Recall */
+            recall: number | null;
+            /** Scenario */
+            scenario: string;
+        };
+        /** LabSweepIn */
+        LabSweepIn: {
+            /**
+             * Levels
+             * @description Corruption levels, 0.0 to 0.9. Omitted: all ten.
+             * @example [
+             *       0,
+             *       0.3,
+             *       0.6,
+             *       0.9
+             *     ]
+             */
+            levels?: number[] | null;
+            /** Providers */
+            providers?: number | null;
+            /** Sanctions */
+            sanctions?: number | null;
+            /** Seed */
+            seed?: number | null;
+        };
+        /** LlmCostOut */
+        LlmCostOut: {
+            everything: components["schemas"]["LlmSpendOut"];
+            /** Price Model */
+            price_model: string;
+            routed: components["schemas"]["LlmSpendOut"];
+            /** Saving */
+            saving: {
+                [key: string]: number | null;
+            };
+            /** Tokens Per Call */
+            tokens_per_call: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+        };
+        /** LlmIntervalOut */
+        LlmIntervalOut: {
+            /** F1 */
+            f1: number[];
+            /** Precision */
+            precision: number[];
+            /** Recall */
+            recall: number[];
+        };
+        /** LlmPopulationOut */
+        LlmPopulationOut: {
+            /** Decided */
+            decided: number;
+            /** Expected Matches */
+            expected_matches: number;
+            /** Grey */
+            grey: number;
+            /** No Candidates */
+            no_candidates: number;
+            /** Records */
+            records: number;
+        };
+        /** LlmSampleOut */
+        LlmSampleOut: {
+            /** Cache Hits */
+            cache_hits: number;
+            /** Decided */
+            decided: number;
+            /** Failed */
+            failed: number;
+            /** Grey */
+            grey: number;
+            /** Live Calls */
+            live_calls: number;
+            /** Seconds */
+            seconds: number;
+        };
+        /** LlmSpendOut */
+        LlmSpendOut: {
+            /** Calls */
+            calls: number;
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Tokens */
+            tokens: number;
+            /** Usd */
+            usd: number;
+        };
+        /** LlmStrategyOut */
+        LlmStrategyOut: {
+            /**
+             * Exact
+             * @description True where nothing was estimated.
+             */
+            exact: boolean;
+            /** F1 */
+            f1: number;
+            /** False Positives */
+            false_positives: number;
+            /** @description 95% stratified-bootstrap interval. */
+            interval?: components["schemas"]["LlmIntervalOut"] | null;
+            /** Precision */
+            precision: number;
+            /** Recall */
+            recall: number;
+            /** Review */
+            review: number;
+            /** True Positives */
+            true_positives: number;
         };
         /** LoginIn */
         LoginIn: {
@@ -1925,6 +2314,19 @@ export interface components {
              * @default analyst
              */
             role?: string;
+        };
+        /** ReliabilityBinOut */
+        ReliabilityBinOut: {
+            /** Count */
+            count: number;
+            /** Lower */
+            lower: number;
+            /** Mean Predicted */
+            mean_predicted: number;
+            /** Observed Frequency */
+            observed_frequency: number;
+            /** Upper */
+            upper: number;
         };
         /** ReviewIn */
         ReviewIn: {
@@ -2789,6 +3191,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    experiments_lab_experiments_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabRunOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    llm_lab_llm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabLlmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabRunOut"];
+                };
+            };
+            /** @description No completed sweep to extend. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The LLM is disabled, or another experiment is live. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    results_lab_results_get: {
+        parameters: {
+            query?: {
+                /** @description Omitted: the newest completed sweep. */
+                sweep_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sweep_lab_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabSweepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabRunOut"];
+                };
+            };
+            /** @description Another Lab experiment is queued or running. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

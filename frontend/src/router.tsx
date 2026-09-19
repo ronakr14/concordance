@@ -38,6 +38,7 @@ export const router = createBrowserRouter([
           { path: "queue/:matchId", ...page(() => import("@/pages/Investigation"), "InvestigationPage") },
           { path: "cases", ...page(() => import("@/pages/Cases"), "CasesPage") },
           { path: "cases/:caseId", ...page(() => import("@/pages/CaseDetail"), "CaseDetailPage") },
+          { path: "lab", ...page(() => import("@/pages/Lab"), "LabPage") },
           {
             element: <RequireAdmin />,
             children: [{ path: "audit", ...page(() => import("@/pages/Audit"), "AuditPage") }],

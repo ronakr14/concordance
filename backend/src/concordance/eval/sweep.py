@@ -29,6 +29,7 @@ import json
 import os
 import time
 import traceback
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -165,6 +166,21 @@ def run_level(
     fit = fit_config(prepared, seed=seed, target_precision=target_precision)
     engine = fit.config.engine()
 
+    # The fit's own holdout measurement, before and after isotonic calibration.
+    # It is the only place the uncalibrated posterior is measured, so it rides
+    # along on the cells that use the fitted engine and the Lab's reliability
+    # diagram can show what calibration changed rather than only where it ended.
+    calibration_fit = {
+        str(kind): {
+            "before": result.before.as_dict(),
+            "after": result.after.as_dict(),
+            "thresholds": result.thresholds.as_dict(),
+            "n_fit": result.n_fit,
+            "n_holdout": result.n_holdout,
+        }
+        for kind, result in sorted(fit.calibration.items(), key=lambda item: str(item[0]))
+    }
+
     rows: list[dict[str, Any]] = []
     for name in strategies:
         strategy = build_strategy(name, engine)
@@ -182,6 +198,8 @@ def run_level(
         # magnitude for data nothing in the chart uses.
         row["detail"].pop("failures", None)
         row["detail"]["level_seconds"] = round(time.perf_counter() - started, 2)
+        if name not in (StrategyName.DETERMINISTIC, StrategyName.FUZZY):
+            row["detail"]["calibration_fit"] = calibration_fit
         rows.append(row)
     return rows
 
@@ -209,8 +227,13 @@ def sweep(
     target_precision: float = 0.99,
     workers: int = DEFAULT_WORKERS,
     reuse: bool = True,
+    on_level: Callable[[float, int, int], None] | None = None,
 ) -> SweepResult:
-    """Run every cell. Levels in parallel, strategies sequential within a level."""
+    """Run every cell. Levels in parallel, strategies sequential within a level.
+
+    `on_level(corruption, done, total)` is called in this process as each level
+    finishes, which is what lets a job report progress on a run of minutes.
+    """
     started = time.perf_counter()
     root.mkdir(parents=True, exist_ok=True)
     names = tuple(str(s) for s in strategies)
@@ -239,7 +262,11 @@ def sweep(
     ]
 
     if result.workers == 1:
-        outputs = [_worker(job) for job in jobs]
+        outputs = []
+        for job in jobs:
+            outputs.append(_worker(job))
+            if on_level is not None:
+                on_level(job[0], len(outputs), len(jobs))
     else:
         outputs = []
         with ProcessPoolExecutor(max_workers=result.workers) as pool:
@@ -247,6 +274,8 @@ def sweep(
             for future in as_completed(futures):
                 outputs.append(future.result())
                 log.info("sweep.level", corruption=futures[future], done=len(outputs), of=len(jobs))
+                if on_level is not None:
+                    on_level(futures[future], len(outputs), len(jobs))
 
     for corruption, rows, error in sorted(outputs, key=lambda o: o[0]):
         if error:

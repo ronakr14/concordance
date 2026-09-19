@@ -1,6 +1,6 @@
 """What each job kind actually does.
 
-Five kinds, and the split between them is the split between work that decides
+Seven kinds, and the split between them is the split between work that decides
 something about production data and work that measures the engine:
 
 - `reconcile` - score the sanction records against the provider master and
@@ -12,8 +12,9 @@ something about production data and work that measures the engine:
 - `retune` - refit the Fellegi-Sunter models and register the result as a new
   immutable `scoring_configs` row. It never edits the config a finished run
   points at; a refit is a new version.
-- `sweep` - the robustness curve across corruption levels. Long, and the only
-  reason it is a job rather than a CLI command is that a UI can start one.
+- `sweep` - the robustness curve across corruption levels, written to a file.
+- `lab_sweep` / `lab_llm` - the Lab's two experiments, written to `lab_sweeps`
+  and `eval_runs` for the page to read. See `lab.service`.
 
 Every handler takes the session the worker opened and returns a small summary
 dict. Most of them leave the transaction to the worker, so a handler that
@@ -193,8 +194,28 @@ def handle_sweep(
         kwargs["levels"] = levels
     result = sweep(**kwargs)
     settings.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    path = write_sweep(result, settings.REPORTS_DIR / "sweep_job.html")
+    path = write_sweep(result, settings.REPORTS_DIR / "sweep_job.json")
     return {"cells": len(result.cells), "report": str(path)}
+
+
+@register("lab_sweep")
+def handle_lab_sweep(
+    session: Session, settings: Settings, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """A Lab sweep: the robustness curve, written to `eval_runs` for the page."""
+    from concordance.lab.service import run_sweep
+
+    return run_sweep(session, settings, uuid.UUID(str(payload["lab_id"])))
+
+
+@register("lab_llm")
+def handle_lab_llm(
+    session: Session, settings: Settings, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """A Lab LLM experiment: routed versus LLM-on-everything, on a sample."""
+    from concordance.lab.service import run_llm
+
+    return run_llm(session, settings, uuid.UUID(str(payload["lab_id"])))
 
 
 def _config_row(session: Session, settings: Settings, version: str | None) -> Any:
@@ -212,6 +233,8 @@ def _as_uuid(value: Any) -> uuid.UUID | None:
 __all__ = [
     "handle_eval",
     "handle_expire_cases",
+    "handle_lab_llm",
+    "handle_lab_sweep",
     "handle_reconcile",
     "handle_retune",
     "handle_sweep",

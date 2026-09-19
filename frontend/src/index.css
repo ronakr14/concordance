@@ -35,6 +35,8 @@
 
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
   /* Diverging pair (blue <-> red, grey midpoint): a field's weight for or
      against a match. */
   --diverge-pos: #2a78d6;
@@ -76,6 +78,8 @@
 
   --series-1: #3987e5;
   --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   --diverge-pos: #3987e5;
   --diverge-neg: #e66767;
 
@@ -108,6 +112,8 @@
   --color-ring: var(--ring);
   --color-series-1: var(--series-1);
   --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
   --color-diverge-pos: var(--diverge-pos);
   --color-diverge-neg: var(--diverge-neg);
   --color-good: var(--good);

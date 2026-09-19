@@ -138,6 +138,13 @@ class EvalStrategy(StrEnum):
     PROBABILISTIC_LLM = "probabilistic_llm"
 
 
+class LabKind(StrEnum):
+    """What a Lab experiment measured."""
+
+    SWEEP = "sweep"
+    LLM = "llm"
+
+
 class FeedbackLabel(StrEnum):
     TRUE_MATCH = "TRUE_MATCH"
     FALSE_MATCH = "FALSE_MATCH"

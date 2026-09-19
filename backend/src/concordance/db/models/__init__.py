@@ -8,7 +8,7 @@ the import list here is load-bearing rather than tidy.
 from __future__ import annotations
 
 from concordance.db.base import Base, metadata
-from concordance.db.models.evaluation import EvalRun, FeedbackEvent, GroundTruth
+from concordance.db.models.evaluation import EvalRun, FeedbackEvent, GroundTruth, LabSweep
 from concordance.db.models.identity import RefreshToken, User
 from concordance.db.models.jobs import Job
 from concordance.db.models.master import (
@@ -36,6 +36,7 @@ __all__ = [
     "FeedbackEvent",
     "GroundTruth",
     "Job",
+    "LabSweep",
     "LlmCall",
     "MatchCandidate",
     "MatchResult",

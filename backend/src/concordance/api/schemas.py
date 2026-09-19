@@ -597,6 +597,196 @@ class HealthOut(ApiModel):
     database: bool
 
 
+# --------------------------------------------------------------------------
+# lab
+# --------------------------------------------------------------------------
+
+
+class LabSweepIn(ApiModel):
+    levels: list[float] | None = Field(
+        default=None,
+        max_length=10,
+        description="Corruption levels, 0.0 to 0.9. Omitted: all ten.",
+        examples=[[0.0, 0.3, 0.6, 0.9]],
+    )
+    providers: int | None = Field(default=None, ge=1_000, le=200_000)
+    sanctions: int | None = Field(default=None, ge=100, le=50_000)
+    seed: int | None = None
+
+
+class LabLlmIn(ApiModel):
+    sweep_id: uuid.UUID | None = Field(
+        default=None, description="The sweep to extend. Omitted: the newest completed one."
+    )
+    levels: list[float] | None = Field(
+        default=None, max_length=10, description="Omitted: 0.3, 0.5 and 0.7."
+    )
+    sample: int | None = Field(
+        default=None, ge=10, le=1_000, description="Records sampled per stratum. Omitted: 100."
+    )
+
+
+class LabRunOut(ApiModel):
+    """One Lab experiment. `progress` is levels for a sweep, model calls for an LLM run."""
+
+    id: uuid.UUID
+    kind: str
+    status: str
+    parent_id: uuid.UUID | None
+    job_id: int | None
+    params: dict[str, Any]
+    progress: dict[str, Any]
+    summary: dict[str, Any]
+    error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class ReliabilityBinOut(ApiModel):
+    lower: float
+    upper: float
+    count: int
+    mean_predicted: float
+    observed_frequency: float
+
+
+class CalibrationMetricsOut(ApiModel):
+    n: int
+    ece: float | None
+    mce: float | None
+    brier: float | None
+    bins: list[ReliabilityBinOut]
+
+
+class LabCalibrationOut(ApiModel):
+    """The fit's holdout, before and after isotonic calibration, at one level."""
+
+    level: float | None
+    model: str
+    before: CalibrationMetricsOut
+    after: CalibrationMetricsOut
+    t_auto_accept: float | None
+    t_auto_reject: float | None
+    target_precision: float | None
+    achieved_precision: float | None
+    grey_band_fraction: float | None
+    n_holdout: int | None
+
+
+class LabScenarioOut(ApiModel):
+    scenario: str
+    n: int
+    accuracy: float | None
+    precision: float | None
+    recall: float | None
+    f1: float | None
+
+
+class LabCellOut(ApiModel):
+    """One strategy at one corruption level."""
+
+    level: float | None
+    strategy: str
+    precision: float | None
+    recall: float | None
+    f1: float | None
+    accuracy: float | None
+    ambiguous_accuracy: float | None
+    wrong_provider: int | None
+    false_positives: int
+    false_negatives: int
+    ece: float | None
+    brier: float | None
+    blocking_recall: float | None
+    grey_band_fraction: float | None
+    records: int | None
+    scenarios: list[LabScenarioOut]
+
+
+class LlmIntervalOut(ApiModel):
+    precision: list[float]
+    recall: list[float]
+    f1: list[float]
+
+
+class LlmStrategyOut(ApiModel):
+    precision: float
+    recall: float
+    f1: float
+    review: float
+    true_positives: float
+    false_positives: float
+    exact: bool = Field(description="True where nothing was estimated.")
+    interval: LlmIntervalOut | None = Field(
+        default=None, description="95% stratified-bootstrap interval."
+    )
+
+
+class LlmSpendOut(ApiModel):
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    tokens: int
+    usd: float
+
+
+class LlmCostOut(ApiModel):
+    price_model: str
+    routed: LlmSpendOut
+    everything: LlmSpendOut
+    saving: dict[str, float | None]
+    tokens_per_call: dict[str, dict[str, float]]
+
+
+class LlmPopulationOut(ApiModel):
+    records: int
+    no_candidates: int
+    grey: int
+    decided: int
+    expected_matches: int
+
+
+class LlmSampleOut(ApiModel):
+    grey: int
+    decided: int
+    failed: int
+    live_calls: int
+    cache_hits: int
+    seconds: float
+
+
+class LabLlmLevelOut(ApiModel):
+    """Routed versus LLM-on-everything at one level, measured on a sample."""
+
+    level: float | None
+    sample_per_stratum: int
+    population: LlmPopulationOut
+    sample: LlmSampleOut
+    strategies: dict[str, LlmStrategyOut]
+    cost: LlmCostOut
+    notes: list[str]
+    config_id: str | None
+
+
+class LabPriceOut(ApiModel):
+    model: str
+    prompt_per_million: float
+    completion_per_million: float
+    placeholder: bool
+
+
+class LabResultsOut(ApiModel):
+    sweep: LabRunOut | None = Field(description="The sweep drawn: the newest completed one by default.")
+    llm_run: LabRunOut | None = Field(description="The LLM experiment extending that sweep, if any.")
+    live: LabRunOut | None = Field(description="Whichever experiment is queued or running now.")
+    cells: list[LabCellOut]
+    calibration: list[LabCalibrationOut]
+    llm: list[LabLlmLevelOut]
+    price: LabPriceOut
+    llm_enabled: bool
+
+
 MatchDetailOut.model_rebuild()
 BulkItemOut.model_rebuild()
 

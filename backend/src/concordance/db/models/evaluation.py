@@ -9,10 +9,12 @@ supervised refit reads from one shape rather than two.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -24,11 +26,13 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from concordance.db.base import Base, CreatedAtMixin, UUIDPrimaryKeyMixin
+from concordance.db.base import Base, CreatedAtMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from concordance.db.enums import (
     EvalStrategy,
     ExpectedOutcome,
     FeedbackLabel,
+    LabKind,
+    RunStatus,
     check_values,
 )
 
@@ -65,6 +69,55 @@ class GroundTruth(Base):
     )
 
 
+class LabSweep(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One Lab experiment: a corruption sweep, or an LLM sample that extends one.
+
+    The `eval_runs` rows it produced point back here, so "the robustness curve"
+    is always one experiment's cells and never a mixture of two runs made with
+    different seeds. An LLM experiment names the sweep it extends in
+    `parent_id`: it reuses that sweep's datasets and seed, so its points can be
+    drawn on the same axes.
+    """
+
+    __tablename__ = "lab_sweeps"
+
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("lab_sweeps.id", ondelete="CASCADE")
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=RunStatus.QUEUED
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    job_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("jobs.id", ondelete="SET NULL")
+    )
+    #: What was asked for: levels, strategies, seed, dataset size, sample size.
+    params: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    #: `{"done": n, "total": m}` - levels for a sweep, model calls for an LLM run.
+    progress: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    #: Wall time, per-level errors, anything the page reports but does not chart.
+    summary: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    error: Mapped[str | None] = mapped_column(String(2000))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        check_values("kind", LabKind),
+        check_values("status", RunStatus),
+        Index("ix_lab_sweeps_kind_created_at", "kind", "created_at"),
+        Index("ix_lab_sweeps_parent_id", "parent_id"),
+    )
+
+
 class EvalRun(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """One strategy measured at one corruption level."""
 
@@ -91,10 +144,19 @@ class EvalRun(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     scoring_config_id: Mapped[uuid.UUID | None] = mapped_column(
         postgresql.UUID(as_uuid=True), ForeignKey("scoring_configs.id", ondelete="SET NULL")
     )
+    sweep_id: Mapped[uuid.UUID | None] = mapped_column(
+        postgresql.UUID(as_uuid=True), ForeignKey("lab_sweeps.id", ondelete="CASCADE")
+    )
+    #: Everything the columns do not hold: per-scenario tallies, routes, the
+    #: fit's before/after calibration, an LLM sample's intervals and costs.
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
 
     __table_args__ = (
         check_values("strategy", EvalStrategy),
         Index("ix_eval_runs_strategy_corruption_level", "strategy", "corruption_level"),
+        Index("ix_eval_runs_sweep_id", "sweep_id"),
     )
 
 
@@ -129,4 +191,4 @@ class FeedbackEvent(CreatedAtMixin, Base):
     )
 
 
-__all__ = ["EvalRun", "FeedbackEvent", "GroundTruth"]
+__all__ = ["EvalRun", "FeedbackEvent", "GroundTruth", "LabSweep"]

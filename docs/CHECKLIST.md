@@ -1238,19 +1238,19 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ### Lab page ⭐ — best screenshot in the project
 
-- [ ] Corruption dial control (0 → 0.9)
-- [ ] Strategy toggles: deterministic, fuzzy, probabilistic, probabilistic+LLM ⭐
-- [ ] **Robustness curve**: precision / recall / F1 versus corruption level, one line per strategy ⭐
-- [ ] **Reliability diagram**, before and after calibration, with the perfect-calibration reference line ⭐
-- [ ] ECE and Brier displayed alongside the diagram
-- [ ] Grey-band width indicator
-- [ ] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐
+- [x] Corruption dial control (0 → 0.9) — a range control in the one filter row above the charts; the level lives in the URL (`?level=0.7`), and clicking the curve moves it too
+- [x] Strategy toggles: deterministic, fuzzy, probabilistic, probabilistic+LLM ⭐ — fixed colour slots (validated palette, both modes), so a hidden strategy never repaints the others; the baselines are also dashed
+- [x] **Robustness curve**: precision / recall / F1 versus corruption level, one line per strategy ⭐ — the LLM variant is drawn as sampled points with 95% intervals, not a line, because it was measured at three levels on a sample
+- [x] **Reliability diagram**, before and after calibration, with the perfect-calibration reference line ⭐ — on the fit's holdout, bins as points sized by count; the sweep now records the fit's before/after per level and model
+- [x] ECE and Brier displayed alongside the diagram
+- [x] Grey-band width indicator — the confidence scale with both thresholds on it, plus the share of records that land in the band
+- [ ] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐ — built and tested (`eval/llm_experiment.py`: stratified sample, exact strata sizes, stratified bootstrap; `docs/lab.md`). Open until the real free-tier sample finishes
 - [ ] F1 comparison against that baseline, proving routing costs little accuracy ⭐
-- [ ] Blocking recall displayed
-- [ ] Per-scenario accuracy breakdown
-- [ ] `POST /lab/sweep` endpoint enqueueing a sweep job
-- [ ] `GET /lab/results` reading `eval_runs`
-- [ ] Charts readable in a screenshot at presentation size
+- [x] Blocking recall displayed
+- [x] Per-scenario accuracy breakdown
+- [x] `POST /lab/sweep` endpoint enqueueing a sweep job — admin only, 202 with a `lab_sweeps` row in `QUEUED`; one live experiment at a time (409). `POST /lab/llm` queues the LLM sample the same way
+- [x] `GET /lab/results` reading `eval_runs` — the newest completed sweep, its LLM run, and whichever experiment is live; a live row whose job died reads as failed
+- [x] Charts readable in a screenshot at presentation size — `frontend/e2e/lab.spec.ts` writes them to `reports/e2e/lab/`
 
 ### Feedback loop ⭐
 
@@ -1299,7 +1299,7 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 - [ ] Assistant page in the UI with query history
 
 ### GATE 9
-- [ ] Lab page renders the robustness curve and reliability diagram from real sweep data ⭐
+- [x] Lab page renders the robustness curve and reliability diagram from real sweep data ⭐ — 50,000 × 5,000, ten levels, 30 cells in 221 s. At 50% corruption probabilistic F1 0.949 against fuzzy 0.305; at 90%, 0.887 against 0.185. Individual-model ECE at 50% goes from 0.087 to 0.026. Driven in Chrome by `lab.spec.ts`, 2/2
 - [ ] LLM cost-versus-baseline panel shows a real saving ⭐
 - [ ] `concordance retune` produces a new config version with improved holdout precision ⭐
 - [ ] Precision-per-round chart shows movement across at least three simulated review rounds

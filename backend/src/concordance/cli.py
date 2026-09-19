@@ -35,6 +35,10 @@ run_app = typer.Typer(
 )
 jobs_app = typer.Typer(help="The job queue and the worker.", no_args_is_help=True)
 api_app = typer.Typer(help="The HTTP API: serve it, or export its contract.", no_args_is_help=True)
+lab_app = typer.Typer(
+    help="The Lab: robustness sweeps and the LLM cost experiment, stored for the UI.",
+    no_args_is_help=True,
+)
 
 app.add_typer(data_app, name="data")
 app.add_typer(match_app, name="match")
@@ -44,6 +48,7 @@ app.add_typer(db_app, name="db")
 app.add_typer(report_app, name="report")
 app.add_typer(run_app, name="run")
 app.add_typer(jobs_app, name="jobs")
+app.add_typer(lab_app, name="lab")
 
 log = get_logger("cli")
 
@@ -1269,6 +1274,95 @@ def api_openapi(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     typer.echo(f"wrote {out} ({len(schema.get('paths', {}))} paths)")
+
+
+LevelsOpt = Annotated[
+    str | None, typer.Option("--levels", help="Comma-separated corruption levels, e.g. 0.3,0.5.")
+]
+QueueOpt = Annotated[
+    bool, typer.Option("--queue", help="Leave it for a worker instead of running it here.")
+]
+
+
+def _parse_levels(levels: str | None) -> list[float] | None:
+    return [float(v) for v in levels.split(",") if v.strip()] if levels else None
+
+
+def _lab(kind: str, queue: bool, request: Any) -> None:
+    """Request an experiment as the system, then run it here unless queued.
+
+    Run here, the row is written with no job at all, so a worker that happens to
+    be running cannot claim the same experiment.
+    """
+    from concordance.audit.service import Actor
+    from concordance.db.session import session_scope
+    from concordance.errors import DomainError
+    from concordance.lab import service
+
+    settings, _ = start(None, echo_config=False)
+    try:
+        with session_scope(settings) as session:
+            row = request(session, settings, Actor.system(), queue)
+            lab_id = row.id
+    except DomainError as exc:
+        typer.secho(exc.message, fg="red")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"lab {kind} {lab_id} queued")
+    if queue:
+        typer.secho("start a worker with 'concordance jobs worker' to run it", fg="green")
+        return
+    run = service.run_sweep if kind == "sweep" else service.run_llm
+    with session_scope(settings) as session:
+        summary = run(session, settings, lab_id)
+    for key, value in summary.items():
+        typer.echo(f"{key:<12}{value}")
+
+
+@lab_app.command("sweep")
+def lab_sweep(
+    levels: LevelsOpt = None,
+    providers: Annotated[int | None, typer.Option("--providers")] = None,
+    sanctions: Annotated[int | None, typer.Option("--sanctions")] = None,
+    queue: QueueOpt = False,
+    seed: SeedOpt = None,
+) -> None:
+    """Sweep every corruption level by every non-LLM strategy, for the Lab page."""
+    from concordance.lab import service
+
+    _lab(
+        "sweep",
+        queue,
+        lambda session, settings, actor, enqueue: service.request_sweep(
+            session,
+            settings,
+            actor,
+            levels=_parse_levels(levels),
+            providers=providers,
+            sanctions=sanctions,
+            seed=seed,
+            enqueue=enqueue,
+        ),
+    )
+
+
+@lab_app.command("llm")
+def lab_llm(
+    levels: LevelsOpt = None,
+    sample: Annotated[
+        int | None, typer.Option("--sample", help="Records per stratum; default 100.")
+    ] = None,
+    queue: QueueOpt = False,
+) -> None:
+    """Routed versus LLM-on-everything, sampled on the newest completed sweep."""
+    from concordance.lab import service
+
+    _lab(
+        "llm",
+        queue,
+        lambda session, settings, actor, enqueue: service.request_llm(
+            session, settings, actor, levels=_parse_levels(levels), sample=sample, enqueue=enqueue
+        ),
+    )
 
 
 def main() -> None:

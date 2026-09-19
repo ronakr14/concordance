@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     # disabled - see `llm/tls.py`.
     LLM_CA_BUNDLE: Path | None = None
 
+    # --- Lab ------------------------------------------------------------------
+    # The paid model the Lab prices its LLM experiment at. The development
+    # models are free, so without a reference price the cost panel would compare
+    # zero with zero. The price itself comes from the price table and is a
+    # placeholder until someone verifies it - see `llm/pricing.py`.
+    LAB_PRICE_MODEL: str = "meta-llama/llama-3.3-70b-instruct"
+    # Levels a Lab sweep runs in parallel. Each holds a 50,000-provider
+    # blocking index in memory, so this is a RAM setting, not a CPU one.
+    LAB_SWEEP_WORKERS: int = Field(default=4, ge=1, le=16)
+
     @property
     def generated_dir(self) -> Path:
         """Where the synthetic dataset lands."""

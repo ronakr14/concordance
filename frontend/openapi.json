@@ -372,6 +372,64 @@
         "title": "BulkOut",
         "type": "object"
       },
+      "CalibrationMetricsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "bins": {
+            "items": {
+              "$ref": "#/components/schemas/ReliabilityBinOut"
+            },
+            "title": "Bins",
+            "type": "array"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "ece": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ece"
+          },
+          "mce": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mce"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "ece",
+          "mce",
+          "brier",
+          "bins"
+        ],
+        "title": "CalibrationMetricsOut",
+        "type": "object"
+      },
       "CandidateOut": {
         "additionalProperties": false,
         "properties": {
@@ -1684,6 +1742,1006 @@
           "conflicts"
         ],
         "title": "KpiOut",
+        "type": "object"
+      },
+      "LabCalibrationOut": {
+        "additionalProperties": false,
+        "description": "The fit's holdout, before and after isotonic calibration, at one level.",
+        "properties": {
+          "achieved_precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Achieved Precision"
+          },
+          "after": {
+            "$ref": "#/components/schemas/CalibrationMetricsOut"
+          },
+          "before": {
+            "$ref": "#/components/schemas/CalibrationMetricsOut"
+          },
+          "grey_band_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grey Band Fraction"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "n_holdout": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Holdout"
+          },
+          "t_auto_accept": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Auto Accept"
+          },
+          "t_auto_reject": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T Auto Reject"
+          },
+          "target_precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Precision"
+          }
+        },
+        "required": [
+          "level",
+          "model",
+          "before",
+          "after",
+          "t_auto_accept",
+          "t_auto_reject",
+          "target_precision",
+          "achieved_precision",
+          "grey_band_fraction",
+          "n_holdout"
+        ],
+        "title": "LabCalibrationOut",
+        "type": "object"
+      },
+      "LabCellOut": {
+        "additionalProperties": false,
+        "description": "One strategy at one corruption level.",
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "ambiguous_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ambiguous Accuracy"
+          },
+          "blocking_recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Recall"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "ece": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ece"
+          },
+          "f1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F1"
+          },
+          "false_negatives": {
+            "title": "False Negatives",
+            "type": "integer"
+          },
+          "false_positives": {
+            "title": "False Positives",
+            "type": "integer"
+          },
+          "grey_band_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grey Band Fraction"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "records": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Records"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/LabScenarioOut"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          },
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          },
+          "wrong_provider": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wrong Provider"
+          }
+        },
+        "required": [
+          "level",
+          "strategy",
+          "precision",
+          "recall",
+          "f1",
+          "accuracy",
+          "ambiguous_accuracy",
+          "wrong_provider",
+          "false_positives",
+          "false_negatives",
+          "ece",
+          "brier",
+          "blocking_recall",
+          "grey_band_fraction",
+          "records",
+          "scenarios"
+        ],
+        "title": "LabCellOut",
+        "type": "object"
+      },
+      "LabLlmIn": {
+        "additionalProperties": false,
+        "properties": {
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omitted: 0.3, 0.5 and 0.7.",
+            "title": "Levels"
+          },
+          "sample": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Records sampled per stratum. Omitted: 100.",
+            "title": "Sample"
+          },
+          "sweep_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The sweep to extend. Omitted: the newest completed one.",
+            "title": "Sweep Id"
+          }
+        },
+        "title": "LabLlmIn",
+        "type": "object"
+      },
+      "LabLlmLevelOut": {
+        "additionalProperties": false,
+        "description": "Routed versus LLM-on-everything at one level, measured on a sample.",
+        "properties": {
+          "config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Id"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/LlmCostOut"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "population": {
+            "$ref": "#/components/schemas/LlmPopulationOut"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/LlmSampleOut"
+          },
+          "sample_per_stratum": {
+            "title": "Sample Per Stratum",
+            "type": "integer"
+          },
+          "strategies": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LlmStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "object"
+          }
+        },
+        "required": [
+          "level",
+          "sample_per_stratum",
+          "population",
+          "sample",
+          "strategies",
+          "cost",
+          "notes",
+          "config_id"
+        ],
+        "title": "LabLlmLevelOut",
+        "type": "object"
+      },
+      "LabPriceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_per_million": {
+            "title": "Completion Per Million",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "placeholder": {
+            "title": "Placeholder",
+            "type": "boolean"
+          },
+          "prompt_per_million": {
+            "title": "Prompt Per Million",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "prompt_per_million",
+          "completion_per_million",
+          "placeholder"
+        ],
+        "title": "LabPriceOut",
+        "type": "object"
+      },
+      "LabResultsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration": {
+            "items": {
+              "$ref": "#/components/schemas/LabCalibrationOut"
+            },
+            "title": "Calibration",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/LabCellOut"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whichever experiment is queued or running now."
+          },
+          "llm": {
+            "items": {
+              "$ref": "#/components/schemas/LabLlmLevelOut"
+            },
+            "title": "Llm",
+            "type": "array"
+          },
+          "llm_enabled": {
+            "title": "Llm Enabled",
+            "type": "boolean"
+          },
+          "llm_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The LLM experiment extending that sweep, if any."
+          },
+          "price": {
+            "$ref": "#/components/schemas/LabPriceOut"
+          },
+          "sweep": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The sweep drawn: the newest completed one by default."
+          }
+        },
+        "required": [
+          "sweep",
+          "llm_run",
+          "live",
+          "cells",
+          "calibration",
+          "llm",
+          "price",
+          "llm_enabled"
+        ],
+        "title": "LabResultsOut",
+        "type": "object"
+      },
+      "LabRunOut": {
+        "additionalProperties": false,
+        "description": "One Lab experiment. `progress` is levels for a sweep, model calls for an LLM run.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "progress": {
+            "additionalProperties": true,
+            "title": "Progress",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "parent_id",
+          "job_id",
+          "params",
+          "progress",
+          "summary",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "LabRunOut",
+        "type": "object"
+      },
+      "LabScenarioOut": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy"
+          },
+          "f1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "F1"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "recall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "n",
+          "accuracy",
+          "precision",
+          "recall",
+          "f1"
+        ],
+        "title": "LabScenarioOut",
+        "type": "object"
+      },
+      "LabSweepIn": {
+        "additionalProperties": false,
+        "properties": {
+          "levels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corruption levels, 0.0 to 0.9. Omitted: all ten.",
+            "examples": [
+              [
+                0.0,
+                0.3,
+                0.6,
+                0.9
+              ]
+            ],
+            "title": "Levels"
+          },
+          "providers": {
+            "anyOf": [
+              {
+                "maximum": 200000.0,
+                "minimum": 1000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providers"
+          },
+          "sanctions": {
+            "anyOf": [
+              {
+                "maximum": 50000.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sanctions"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "LabSweepIn",
+        "type": "object"
+      },
+      "LlmCostOut": {
+        "additionalProperties": false,
+        "properties": {
+          "everything": {
+            "$ref": "#/components/schemas/LlmSpendOut"
+          },
+          "price_model": {
+            "title": "Price Model",
+            "type": "string"
+          },
+          "routed": {
+            "$ref": "#/components/schemas/LlmSpendOut"
+          },
+          "saving": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Saving",
+            "type": "object"
+          },
+          "tokens_per_call": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Tokens Per Call",
+            "type": "object"
+          }
+        },
+        "required": [
+          "price_model",
+          "routed",
+          "everything",
+          "saving",
+          "tokens_per_call"
+        ],
+        "title": "LlmCostOut",
+        "type": "object"
+      },
+      "LlmIntervalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "f1": {
+            "items": {
+              "type": "number"
+            },
+            "title": "F1",
+            "type": "array"
+          },
+          "precision": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Precision",
+            "type": "array"
+          },
+          "recall": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Recall",
+            "type": "array"
+          }
+        },
+        "required": [
+          "precision",
+          "recall",
+          "f1"
+        ],
+        "title": "LlmIntervalOut",
+        "type": "object"
+      },
+      "LlmPopulationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "decided": {
+            "title": "Decided",
+            "type": "integer"
+          },
+          "expected_matches": {
+            "title": "Expected Matches",
+            "type": "integer"
+          },
+          "grey": {
+            "title": "Grey",
+            "type": "integer"
+          },
+          "no_candidates": {
+            "title": "No Candidates",
+            "type": "integer"
+          },
+          "records": {
+            "title": "Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records",
+          "no_candidates",
+          "grey",
+          "decided",
+          "expected_matches"
+        ],
+        "title": "LlmPopulationOut",
+        "type": "object"
+      },
+      "LlmSampleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cache_hits": {
+            "title": "Cache Hits",
+            "type": "integer"
+          },
+          "decided": {
+            "title": "Decided",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "grey": {
+            "title": "Grey",
+            "type": "integer"
+          },
+          "live_calls": {
+            "title": "Live Calls",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "grey",
+          "decided",
+          "failed",
+          "live_calls",
+          "cache_hits",
+          "seconds"
+        ],
+        "title": "LlmSampleOut",
+        "type": "object"
+      },
+      "LlmSpendOut": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "tokens": {
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "usd": {
+            "title": "Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "calls",
+          "prompt_tokens",
+          "completion_tokens",
+          "tokens",
+          "usd"
+        ],
+        "title": "LlmSpendOut",
+        "type": "object"
+      },
+      "LlmStrategyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "exact": {
+            "description": "True where nothing was estimated.",
+            "title": "Exact",
+            "type": "boolean"
+          },
+          "f1": {
+            "title": "F1",
+            "type": "number"
+          },
+          "false_positives": {
+            "title": "False Positives",
+            "type": "number"
+          },
+          "interval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmIntervalOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "95% stratified-bootstrap interval."
+          },
+          "precision": {
+            "title": "Precision",
+            "type": "number"
+          },
+          "recall": {
+            "title": "Recall",
+            "type": "number"
+          },
+          "review": {
+            "title": "Review",
+            "type": "number"
+          },
+          "true_positives": {
+            "title": "True Positives",
+            "type": "number"
+          }
+        },
+        "required": [
+          "precision",
+          "recall",
+          "f1",
+          "review",
+          "true_positives",
+          "false_positives",
+          "exact"
+        ],
+        "title": "LlmStrategyOut",
         "type": "object"
       },
       "LoginIn": {
@@ -3552,6 +4610,40 @@
           "password"
         ],
         "title": "RegisterIn",
+        "type": "object"
+      },
+      "ReliabilityBinOut": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "lower": {
+            "title": "Lower",
+            "type": "number"
+          },
+          "mean_predicted": {
+            "title": "Mean Predicted",
+            "type": "number"
+          },
+          "observed_frequency": {
+            "title": "Observed Frequency",
+            "type": "number"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lower",
+          "upper",
+          "count",
+          "mean_predicted",
+          "observed_frequency"
+        ],
+        "title": "ReliabilityBinOut",
         "type": "object"
       },
       "ReviewIn": {
@@ -5721,6 +6813,222 @@
         "summary": "Health",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/lab/experiments": {
+      "get": {
+        "description": "Recent experiments of both kinds, newest first.",
+        "operationId": "experiments_lab_experiments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LabRunOut"
+                  },
+                  "title": "Response Experiments Lab Experiments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Experiments",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/lab/llm": {
+      "post": {
+        "description": "Queue the routed-versus-everything LLM sample on a finished sweep. Admin only.",
+        "operationId": "llm_lab_llm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabLlmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No completed sweep to extend."
+          },
+          "409": {
+            "description": "The LLM is disabled, or another experiment is live."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Llm",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/lab/results": {
+      "get": {
+        "description": "Every number the Lab page draws, for one sweep and the LLM run that extends it.",
+        "operationId": "results_lab_results_get",
+        "parameters": [
+          {
+            "description": "Omitted: the newest completed sweep.",
+            "in": "query",
+            "name": "sweep_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Omitted: the newest completed sweep.",
+              "title": "Sweep Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Results",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/lab/sweep": {
+      "post": {
+        "description": "Queue a corruption sweep. Admin only.",
+        "operationId": "sweep_lab_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabSweepIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Another Lab experiment is queued or running."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sweep",
+        "tags": [
+          "lab"
         ]
       }
     },

@@ -333,54 +333,71 @@ class ProbabilisticLlmStrategy:
         result = self.engine.score_record(record, candidates)
         if result.decision is not Outcome.AMBIGUOUS or not result.candidates:
             return result
-
-        thresholds = self.engine.bundle(result.kind).thresholds
-        request = AdjudicationRequest.of(
-            result, (thresholds.t_auto_reject, thresholds.t_auto_accept)
-        )
-        outcome = self.adjudicator.adjudicate(request)
-        if outcome.abstained:
-            return result
-
-        cited = set(outcome.evidence_cited)
-        allowed = request.supplied_evidence()
-        if not cited <= allowed:
-            # The adjudicator cited a field it was never given. Rejecting the
-            # response outright is cheaper and more reliable than trying to
-            # decide which half of it to believe.
-            return MatchResult(
-                record_id=result.record_id,
-                decision=Outcome.AMBIGUOUS,
-                route=Route.LLM,
-                reason=DecisionReason.GREY_BAND,
-                kind=result.kind,
-                chosen_provider_id=result.chosen_provider_id,
-                confidence=result.confidence,
-                match_weight=result.match_weight,
-                margin=result.margin,
-                candidates=result.candidates,
-                notes=(
-                    *result.notes,
-                    "adjudicator response rejected: cited evidence not supplied "
-                    + str(sorted(cited - allowed)),
-                ),
-            )
-        return MatchResult(
-            record_id=result.record_id,
-            decision=outcome.decision,
-            route=Route.LLM,
-            reason=DecisionReason.ADJUDICATED,
-            kind=result.kind,
-            chosen_provider_id=outcome.provider_id,
-            confidence=outcome.confidence if outcome.confidence is not None else result.confidence,
-            match_weight=result.match_weight,
-            margin=result.margin,
-            candidates=result.candidates,
-            notes=(*result.notes, outcome.reasoning) if outcome.reasoning else result.notes,
-        )
+        request = adjudication_request(self.engine, result)
+        return apply_adjudication(result, request, self.adjudicator.adjudicate(request))
 
     def stats(self) -> dict[str, Any]:
         return {"strategy": str(self.name), **self.adjudicator.stats()}
+
+
+def adjudication_request(
+    engine: MatchingEngine, result: MatchResult, top_k: int = 3
+) -> AdjudicationRequest:
+    """What an adjudicator is shown for this result: its candidates and the band."""
+    thresholds = engine.bundle(result.kind).thresholds
+    return AdjudicationRequest.of(
+        result, (thresholds.t_auto_reject, thresholds.t_auto_accept), top_k=top_k
+    )
+
+
+def apply_adjudication(
+    result: MatchResult, request: AdjudicationRequest, outcome: Any
+) -> MatchResult:
+    """The engine's result, with an adjudicator's answer applied to it.
+
+    Shared by the routed strategy and the Lab's LLM-on-everything baseline, so
+    the two differ only in which records they send and never in how an answer
+    is read. An abstention leaves the result exactly as the engine left it.
+    """
+    if outcome.abstained:
+        return result
+
+    cited = set(outcome.evidence_cited)
+    allowed = request.supplied_evidence()
+    if not cited <= allowed:
+        # The adjudicator cited a field it was never given. Rejecting the
+        # response outright is cheaper and more reliable than trying to
+        # decide which half of it to believe.
+        return MatchResult(
+            record_id=result.record_id,
+            decision=Outcome.AMBIGUOUS,
+            route=Route.LLM,
+            reason=DecisionReason.GREY_BAND,
+            kind=result.kind,
+            chosen_provider_id=result.chosen_provider_id,
+            confidence=result.confidence,
+            match_weight=result.match_weight,
+            margin=result.margin,
+            candidates=result.candidates,
+            notes=(
+                *result.notes,
+                "adjudicator response rejected: cited evidence not supplied "
+                + str(sorted(cited - allowed)),
+            ),
+        )
+    return MatchResult(
+        record_id=result.record_id,
+        decision=outcome.decision,
+        route=Route.LLM,
+        reason=DecisionReason.ADJUDICATED,
+        kind=result.kind,
+        chosen_provider_id=outcome.provider_id,
+        confidence=outcome.confidence if outcome.confidence is not None else result.confidence,
+        match_weight=result.match_weight,
+        margin=result.margin,
+        candidates=result.candidates,
+        notes=(*result.notes, outcome.reasoning) if outcome.reasoning else result.notes,
+    )
 
 
 def build_strategy(
@@ -409,5 +426,7 @@ __all__ = [
     "ProbabilisticStrategy",
     "Strategy",
     "StrategyName",
+    "adjudication_request",
+    "apply_adjudication",
     "build_strategy",
 ]

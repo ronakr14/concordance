@@ -42,6 +42,13 @@ export type Facets = S["FacetsOut"];
 
 export type Run = S["RunOut"];
 
+export type LabResults = S["LabResultsOut"];
+export type LabRun = S["LabRunOut"];
+export type LabCell = S["LabCellOut"];
+export type LabCalibration = S["LabCalibrationOut"];
+export type LabLlmLevel = S["LabLlmLevelOut"];
+export type LlmStrategy = S["LlmStrategyOut"];
+
 export interface Page<T> {
   items: T[];
   total: number;

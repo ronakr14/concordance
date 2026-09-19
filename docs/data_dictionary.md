@@ -102,12 +102,15 @@ How one authority's headers map onto the canonical field set (Q1).
 | `reliability_bins` | `JSONB` | no | `'{}'::jsonb` | JSONB of the reliability diagram's bins, so a report can be redrawn without rerunning. |
 | `blocking_recall` | `FLOAT` | yes | — | Share of true matches whose provider appeared in the candidate set at all - the ceiling every later stage works under. |
 | `scoring_config_id` | `UUID` | yes | — | Config the measured strategy ran with. |
+| `sweep_id` | `UUID` | yes | — | The Lab experiment this cell belongs to, so a robustness curve is always one experiment's cells. Cascades on delete. |
+| `detail` | `JSONB` | no | `'{}'::jsonb` | JSONB of everything the columns do not hold: per-scenario and per-model tallies, routes, the fit's before/after calibration, and for an LLM sample its intervals and costs. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
 
 **Indexes**
 
 - `ix_eval_runs_strategy_corruption_level` on eval_runs.strategy, eval_runs.corruption_level
+- `ix_eval_runs_sweep_id` on eval_runs.sweep_id
 
 ### `feedback_events`
 
@@ -164,6 +167,32 @@ The background queue, dequeued with `FOR UPDATE SKIP LOCKED`.
 
 - `ix_jobs_kind` on jobs.kind
 - `ix_jobs_status_run_after` on jobs.status, jobs.run_after
+
+### `lab_sweeps`
+
+One Lab experiment: a corruption sweep, or an LLM sample that extends one. Written in `QUEUED` before any work starts; the worker adopts the row.
+
+| Column | Type | Null | Default | Meaning |
+|---|---|---|---|---|
+| `kind` | `VARCHAR(20)` | no | — | What was measured. One of ('sweep', 'llm'). |
+| `parent_id` | `UUID` | yes | — | For an LLM experiment, the sweep whose datasets and seed it reuses. |
+| `status` | `VARCHAR(20)` | no | `QUEUED` | Lifecycle state. One of ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'). |
+| `requested_by` | `UUID` | yes | — | Who asked for it. Null when the system did. |
+| `job_id` | `BIGINT` | yes | — | The job running it. A live row whose job is dead reads as failed. |
+| `params` | `JSONB` | no | `'{}'::jsonb` | JSONB of what was asked for: levels, strategies, seed, dataset size, sample size, reference price model. |
+| `progress` | `JSONB` | no | `'{}'::jsonb` | JSONB `{done, total}` - levels for a sweep, model calls for an LLM run. |
+| `summary` | `JSONB` | no | `'{}'::jsonb` | JSONB of wall time, cell count and per-level errors. |
+| `error` | `VARCHAR(2000)` | yes | — | Why it failed, when it did. |
+| `started_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When the worker adopted it. |
+| `finished_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When it completed or failed. |
+| `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
+| `updated_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row last changed. |
+
+**Indexes**
+
+- `ix_lab_sweeps_kind_created_at` on lab_sweeps.kind, lab_sweeps.created_at
+- `ix_lab_sweeps_parent_id` on lab_sweeps.parent_id
 
 ### `llm_calls`
 
@@ -509,6 +538,8 @@ defined once in `db/enums.py` and the constraint is generated from them.
 | `eval_runs.strategy` | `deterministic`, `fuzzy`, `probabilistic`, `probabilistic_llm` |
 | `feedback_events.label` | `TRUE_MATCH`, `FALSE_MATCH` |
 | `jobs.status` | `PENDING`, `RUNNING`, `DONE`, `FAILED`, `DEAD` |
+| `lab_sweeps.kind` | `sweep`, `llm` |
+| `lab_sweeps.status` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 
 ---
 

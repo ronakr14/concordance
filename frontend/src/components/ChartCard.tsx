@@ -17,6 +17,8 @@ export function useChartTheme() {
     return {
       series1: v("--series-1"),
       series2: v("--series-2"),
+      series3: v("--series-3"),
+      series4: v("--series-4"),
       grid: v("--grid"),
       axis: v("--axis"),
       muted: v("--muted"),

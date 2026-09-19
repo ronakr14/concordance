@@ -26,6 +26,8 @@ export type SanctionFilters = Query<"/sanctions", "get">;
 export type RunIn = Body<"/reconciliation/run", "post">;
 export type CommitIn = Body<"/sanctions/upload/{file_id}/commit", "post">;
 export type ReviewIn = Body<"/matches/{match_id}/approve", "post">;
+export type LabSweepIn = Body<"/lab/sweep", "post">;
+export type LabLlmIn = Body<"/lab/llm", "post">;
 
 export const keys = {
   stats: ["stats"] as const,
@@ -41,6 +43,7 @@ export const keys = {
   facets: ["facets"] as const,
   mappings: ["column-mappings"] as const,
   runs: ["runs"] as const,
+  lab: ["lab"] as const,
 };
 
 /** Paged lists keep the previous page on screen while the next loads. */
@@ -261,5 +264,34 @@ export function useCancelRun() {
     mutationFn: (runId: string) =>
       unwrap(api.POST("/reconciliation/runs/{run_id}/cancel", { params: { path: { run_id: runId } } })),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.runs }),
+  });
+}
+
+// --- lab ----------------------------------------------------------------------------
+
+/**
+ * The newest completed sweep and its LLM run. Polls while an experiment is
+ * live, so progress moves and the curves swap in when it finishes.
+ */
+export const useLabResults = () =>
+  useQuery({
+    queryKey: [...keys.lab, "results"],
+    queryFn: () => unwrap(api.GET("/lab/results")),
+    refetchInterval: (query) => (query.state.data?.live ? 3000 : false),
+  });
+
+export function useStartSweep() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LabSweepIn) => unwrap(api.POST("/lab/sweep", { body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.lab }),
+  });
+}
+
+export function useStartLlm() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LabLlmIn) => unwrap(api.POST("/lab/llm", { body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.lab }),
   });
 }
