@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Float, cast, func, literal, select
+from sqlalchemy import Float, and_, case, cast, func, literal, select
 from sqlalchemy.orm import Session
 
-from concordance.db.enums import CaseStatus, Decision, ReviewStatus
+from concordance.db.enums import CasePhase, CaseStatus, Decision, ReviewStatus
 from concordance.db.models import Case, MatchResult, Provider, ReconciliationRun, SanctionRecord
 
 #: Confidence histogram resolution. Ten bins is what a reviewer can read.
@@ -35,6 +35,7 @@ class Kpis:
     escalated: int
     approved: int
     rejected: int
+    cases_pending: int
     cases_active: int
     cases_expired: int
     cases_closed: int
@@ -57,7 +58,7 @@ class StatsRepository:
             .where(current, MatchResult.decision != Decision.NO_MATCH)
             .group_by(MatchResult.review_status)
         )
-        cases = self._grouped(select(Case.status, func.count()).group_by(Case.status))
+        cases = self._case_phases()
         conflicts = self.session.scalar(
             select(func.count())
             .select_from(Case)
@@ -77,6 +78,7 @@ class StatsRepository:
             escalated=int(reviews.get(ReviewStatus.ESCALATED, 0)),
             approved=int(reviews.get(ReviewStatus.APPROVED, 0)),
             rejected=int(reviews.get(ReviewStatus.REJECTED, 0)),
+            cases_pending=int(cases.get(CasePhase.PENDING, 0)),
             cases_active=int(cases.get(CaseStatus.ACTIVE, 0)),
             cases_expired=int(cases.get(CaseStatus.EXPIRED, 0)),
             cases_closed=int(cases.get(CaseStatus.CLOSED, 0)),
@@ -123,8 +125,20 @@ class StatsRepository:
         return [(str(s), int(n)) for s, n in self.session.execute(stmt).all()]
 
     def case_status(self) -> list[tuple[str, int]]:
-        counts = self._grouped(select(Case.status, func.count()).group_by(Case.status))
-        return [(str(status), counts.get(status, 0)) for status in CaseStatus]
+        counts = self._case_phases()
+        return [(str(phase), counts.get(phase, 0)) for phase in CasePhase]
+
+    def _case_phases(self) -> dict[str, int]:
+        """Cases per `CasePhase`: stored `ACTIVE` split on whether it has begun."""
+        today = datetime.now(UTC).date()
+        phase = case(
+            (
+                and_(Case.status == CaseStatus.ACTIVE, Case.start_date > today),
+                CasePhase.PENDING.value,
+            ),
+            else_=Case.status,
+        )
+        return self._grouped(select(phase, func.count()).group_by(phase))
 
     def reconciliation_volume(self, *, days: int = 30, bucket: str = "day") -> list[dict[str, Any]]:
         """Runs and records reconciled per period, over the last `days` days."""

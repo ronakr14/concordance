@@ -9,7 +9,7 @@ import { ConfidenceBadge, ConflictTag, StatusBadge } from "@/components/status";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, Skeleton } from "@/components/ui/surface";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { RECORD_TYPE } from "@/lib/status";
+import { casePhaseKey, RECORD_TYPE } from "@/lib/status";
 
 import { providerName } from "./investigation/fields";
 
@@ -112,7 +112,7 @@ export function ProviderPage() {
                     <Link to={`/cases/${c.id}`} className="font-mono text-accent hover:underline">
                       {c.case_number}
                     </Link>
-                    <StatusBadge status={c.status} />
+                    <StatusBadge status={casePhaseKey(c.phase)} />
                     <span className="text-xs text-muted">
                       {formatDate(c.start_date)} – {formatDate(c.end_date)} · {c.duration_months} months
                     </span>

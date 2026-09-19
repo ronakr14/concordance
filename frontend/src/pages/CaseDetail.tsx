@@ -14,7 +14,7 @@ import { FieldError, Label, Textarea } from "@/components/ui/form";
 import { DialogContent, DialogRoot } from "@/components/ui/overlay";
 import { Card, CardBody, CardHeader, Skeleton } from "@/components/ui/surface";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { statusSpec, TONE_CLASS } from "@/lib/status";
+import { casePhaseKey, statusSpec, TONE_CLASS } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 export function CaseDetailPage() {
@@ -36,7 +36,7 @@ export function CaseDetailPage() {
           {c ? (
             <>
               <h1 className="font-mono text-xl font-semibold tracking-tight">{c.case_number}</h1>
-              <StatusBadge status={c.status} />
+              <StatusBadge status={casePhaseKey(c.phase)} />
             </>
           ) : (
             <Skeleton className="h-7 w-56" />
@@ -171,7 +171,7 @@ function StatusTimeline({ c, events }: { c: CaseDetail; events: AuditRow[] }) {
   const span = Math.max(end - start, 1);
   const at = (t: number) => `${Math.min(100, Math.max(0, ((t - start) / span) * 100))}%`;
   const transitions = [...events].filter((e) => e.action.startsWith("case.")).reverse();
-  const tone = TONE_CLASS[statusSpec(c.status).tone];
+  const tone = TONE_CLASS[statusSpec(casePhaseKey(c.phase)).tone];
 
   return (
     <div className="space-y-3">

@@ -19,7 +19,7 @@ from concordance.review import service as review
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
-CaseStatusQ = Literal["ACTIVE", "EXPIRED", "CLOSED", "REJECTED"]
+CaseStatusQ = Literal["PENDING", "ACTIVE", "EXPIRED", "CLOSED", "REJECTED"]
 
 
 @router.post(
@@ -51,7 +51,10 @@ def list_cases(
     _user: CurrentUser,
     limit: Limit = 50,
     offset: Offset = 0,
-    status_: Annotated[CaseStatusQ | None, Query(alias="status")] = None,
+    status_: Annotated[
+        CaseStatusQ | None,
+        Query(alias="status", description="A case phase: `PENDING` is active but not yet begun."),
+    ] = None,
     provider_id: Annotated[str | None, Query(max_length=64)] = None,
     conflict: bool = False,
     date_from: Annotated[date | None, Query(description="Start date on or after.")] = None,

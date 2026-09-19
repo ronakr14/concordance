@@ -22,7 +22,7 @@ import { StatusBadge } from "@/components/status";
 import { Select } from "@/components/ui/form";
 import { Card, CardBody, CardHeader, Skeleton } from "@/components/ui/surface";
 import { formatCompact, formatInt, formatUsd } from "@/lib/format";
-import { statusSpec } from "@/lib/status";
+import { casePhaseKey, statusSpec } from "@/lib/status";
 
 const TILES: { key: keyof Kpis; label: string; to?: string }[] = [
   { key: "providers", label: "Providers", to: "/providers" },
@@ -222,7 +222,7 @@ function ConfidenceChart() {
 function CaseStatusChart() {
   const status = useCaseStatus();
   const t = useChartTheme();
-  const data = (status.data ?? []).map((b) => ({ ...b, name: statusSpec(b.label).label }));
+  const data = (status.data ?? []).map((b) => ({ ...b, label: casePhaseKey(b.label), name: statusSpec(casePhaseKey(b.label)).label }));
   return (
     <ChartCard
       title="Case status"

@@ -8,6 +8,7 @@ import { EmptyState, PageHeader } from "@/components/states";
 import { ConflictTag, StatusBadge } from "@/components/status";
 import { Input, Select } from "@/components/ui/form";
 import { formatDate } from "@/lib/format";
+import { casePhaseKey } from "@/lib/status";
 import { opt, useSearchState } from "@/lib/useSearchState";
 
 const DEFAULTS = { status: "", conflict: "", provider_id: "", date_from: "", date_to: "", offset: "0", limit: "50" };
@@ -49,7 +50,7 @@ const COLUMNS = col.columns([
     enableSorting: false,
     cell: ({ row }) => (
       <span className="inline-flex items-center gap-1.5">
-        <StatusBadge status={row.original.status} />
+        <StatusBadge status={casePhaseKey(row.original.phase)} />
         {row.original.conflict_flag ? <ConflictTag /> : null}
       </span>
     ),
@@ -82,6 +83,7 @@ export function CasesPage() {
         <FilterField label="Status" htmlFor="c-status" width="w-36">
           <Select id="c-status" value={f.status} onChange={(e) => set({ status: e.target.value })}>
             <option value="">Any</option>
+            <option value="PENDING">Pending start</option>
             <option value="ACTIVE">Active</option>
             <option value="EXPIRED">Expired</option>
             <option value="CLOSED">Closed</option>

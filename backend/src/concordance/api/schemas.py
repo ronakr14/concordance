@@ -9,10 +9,12 @@ filter: `UserOut` cannot leak `password_hash`, because it has nowhere to put it.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
+
+from concordance.db.enums import CasePhase, case_phase
 
 
 class ApiModel(BaseModel):
@@ -467,6 +469,14 @@ class CaseOut(ApiModel):
     conflict_match_result_id: uuid.UUID | None
     created_at: datetime
 
+    @computed_field(  # type: ignore[prop-decorator]
+        description="`status` as a person reads it: an `ACTIVE` case whose window has "
+        "not begun is `PENDING`. Derived today, never stored."
+    )
+    @property
+    def phase(self) -> CasePhase:
+        return case_phase(self.status, self.start_date, datetime.now(UTC).date())
+
 
 class CaseListItemOut(CaseOut):
     """A case row with the names a person reads, not only the ids."""
@@ -525,6 +535,7 @@ class KpiOut(ApiModel):
     escalated: int
     approved: int
     rejected: int
+    cases_pending: int
     cases_active: int
     cases_expired: int
     cases_closed: int

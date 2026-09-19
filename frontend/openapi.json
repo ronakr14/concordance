@@ -564,6 +564,11 @@
             ],
             "title": "Match Result Id"
           },
+          "phase": {
+            "$ref": "#/components/schemas/CasePhase",
+            "description": "`status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored.",
+            "readOnly": true
+          },
           "provider": {
             "anyOf": [
               {
@@ -671,7 +676,8 @@
           "closed_by_email",
           "provider",
           "sanction_record",
-          "match"
+          "match",
+          "phase"
         ],
         "title": "CaseDetailOut",
         "type": "object"
@@ -829,6 +835,11 @@
             ],
             "title": "Match Result Id"
           },
+          "phase": {
+            "$ref": "#/components/schemas/CasePhase",
+            "description": "`status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored.",
+            "readOnly": true
+          },
           "provider_id": {
             "title": "Provider Id",
             "type": "string"
@@ -913,7 +924,8 @@
           "sanction_type",
           "source_authority",
           "created_by_email",
-          "closed_by_email"
+          "closed_by_email",
+          "phase"
         ],
         "title": "CaseListItemOut",
         "type": "object"
@@ -1007,6 +1019,11 @@
             ],
             "title": "Match Result Id"
           },
+          "phase": {
+            "$ref": "#/components/schemas/CasePhase",
+            "description": "`status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored.",
+            "readOnly": true
+          },
           "provider_id": {
             "title": "Provider Id",
             "type": "string"
@@ -1041,10 +1058,23 @@
           "close_reason",
           "conflict_flag",
           "conflict_match_result_id",
-          "created_at"
+          "created_at",
+          "phase"
         ],
         "title": "CaseOut",
         "type": "object"
+      },
+      "CasePhase": {
+        "description": "What a person reads for a case: the stored status, with `ACTIVE` split.\n\nDerived, never stored. A case opened with a future `start_date` is stored\n`ACTIVE` - the partial unique index and the expiry job both need it to be -\nbut its window has not begun, so it reads as `PENDING`. Worked out at query\ntime, as provider compliance is, so it cannot go stale overnight.",
+        "enum": [
+          "PENDING",
+          "ACTIVE",
+          "EXPIRED",
+          "CLOSED",
+          "REJECTED"
+        ],
+        "title": "CasePhase",
+        "type": "string"
       },
       "CloseCaseIn": {
         "additionalProperties": false,
@@ -1600,6 +1630,10 @@
             "title": "Cases Expired",
             "type": "integer"
           },
+          "cases_pending": {
+            "title": "Cases Pending",
+            "type": "integer"
+          },
           "conflicts": {
             "title": "Conflicts",
             "type": "integer"
@@ -1643,6 +1677,7 @@
           "escalated",
           "approved",
           "rejected",
+          "cases_pending",
           "cases_active",
           "cases_expired",
           "cases_closed",
@@ -5091,6 +5126,7 @@
             }
           },
           {
+            "description": "A case phase: `PENDING` is active but not yet begun.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -5098,6 +5134,7 @@
               "anyOf": [
                 {
                   "enum": [
+                    "PENDING",
                     "ACTIVE",
                     "EXPIRED",
                     "CLOSED",
@@ -5109,6 +5146,7 @@
                   "type": "null"
                 }
               ],
+              "description": "A case phase: `PENDING` is active but not yet begun.",
               "title": "Status"
             }
           },

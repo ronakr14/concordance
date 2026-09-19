@@ -1194,7 +1194,7 @@ generated against a complete schema.
 ### Cases
 
 - [x] Case list: case id, provider, sanction, start/end dates, status, approval metadata ⭐
-- [ ] Filter by status: active, pending, completed/expired, rejected, closed ⭐ — active, expired, closed and rejected; the schema has no `PENDING` case status (a case exists only once approved), so this needs a decision rather than code
+- [x] Filter by status: active, pending, completed/expired, rejected, closed ⭐ — `PENDING` is a derived **phase**, not a stored status: an `ACTIVE` case whose `start_date` is still ahead (`CasePhase`, computed at query time like provider compliance). Every case carries `phase`; the filter, the case-status chart and a `cases_pending` KPI split on it; shown as "Pending start" so it cannot be confused with a reviewer's `PENDING`. `REJECTED` stays in the filter though no code path sets it yet
 - [x] Case detail view
 - [x] Status timeline visualization
 - [x] Audit history embedded in the detail view ⭐

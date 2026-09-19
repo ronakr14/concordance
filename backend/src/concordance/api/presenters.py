@@ -203,7 +203,7 @@ def case_detail(session: Session, case: Case) -> schemas.CaseDetailOut:
     record = session.get(SanctionRecord, case.sanction_record_id)
     match = session.get(MatchResult, case.match_result_id) if case.match_result_id else None
     emails = user_emails(session, [case.created_by, case.closed_by])
-    base = _case_item(case, provider, record, emails).model_dump()
+    base = _case_item(case, provider, record, emails).model_dump(exclude={"phase"})
     return schemas.CaseDetailOut(
         **base,
         provider=provider_brief(provider) if provider else None,
@@ -300,7 +300,7 @@ def _case_item(
     record: SanctionRecord | None,
     emails: dict[uuid.UUID, str],
 ) -> schemas.CaseListItemOut:
-    base = schemas.CaseOut.model_validate(case).model_dump()
+    base = schemas.CaseOut.model_validate(case).model_dump(exclude={"phase"})
     return schemas.CaseListItemOut(
         **base,
         provider_name=provider_name(provider),

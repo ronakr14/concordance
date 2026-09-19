@@ -20,7 +20,7 @@ import io
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -523,6 +523,34 @@ def test_cases_open_close_reopen_and_expire(world: World, owner_session: Any) ->
     assert trail[0]["actor_role"] == "system" and trail[0]["actor_user_id"] is None
 
 
+def test_a_case_that_has_not_begun_reads_as_pending(world: World) -> None:
+    """PENDING is derived: stored ACTIVE, with a start date still ahead."""
+    [result] = world.by_role("match0")  # its earlier cases are closed and expired
+    before = world.call("GET", "/stats/kpis").json()
+    starts = datetime.now(UTC).date() + timedelta(days=30)
+    opened = world.call(
+        "POST", "/cases", json={"match_result_id": result["id"], "start_date": starts.isoformat()}
+    )
+    assert opened.status_code == 201, opened.text
+    case = opened.json()
+    assert case["status"] == "ACTIVE" and case["phase"] == "PENDING"
+
+    def listed(phase: str) -> set[str]:
+        rows = world.call("GET", f"/cases?status={phase}&limit=100", as_="analyst").json()["items"]
+        return {c["id"] for c in rows}
+
+    assert case["id"] in listed("PENDING") and case["id"] not in listed("ACTIVE")
+    assert world.call("GET", f"/cases/{case['id']}").json()["phase"] == "PENDING"
+    after = world.call("GET", "/stats/kpis").json()
+    assert after["cases_pending"] == before["cases_pending"] + 1
+    assert after["cases_active"] == before["cases_active"]
+    chart = {b["label"]: b["count"] for b in world.call("GET", "/stats/case-status").json()}
+    assert chart["PENDING"] == after["cases_pending"] and chart["ACTIVE"] == after["cases_active"]
+
+    closed = world.call("POST", f"/cases/{case['id']}/close", json={"reason": "opened for a test"})
+    assert closed.status_code == 200 and closed.json()["phase"] == "CLOSED"
+
+
 def test_an_updated_file_supersedes_and_flags_the_live_case(world: World) -> None:
     """Q5: a new version of a record re-decides it; the approved case is flagged, not changed."""
     [target] = world.by_role("match2")  # approved after escalation: its case is live
@@ -746,7 +774,7 @@ def test_the_dashboard_numbers(world: World) -> None:
     assert len(bins) == 10 and bins[-1]["label"] == "0.9-1.0"
     assert world.call("GET", "/stats/state-distribution").json()
     statuses = {b["label"] for b in world.call("GET", "/stats/case-status").json()}
-    assert statuses == {"ACTIVE", "EXPIRED", "CLOSED", "REJECTED"}
+    assert statuses == {"PENDING", "ACTIVE", "EXPIRED", "CLOSED", "REJECTED"}
     assert world.call("GET", "/stats/reconciliation-volume?days=2").json()[-1]["runs"] >= 2
 
 

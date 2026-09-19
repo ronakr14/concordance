@@ -10,6 +10,7 @@ import {
   Ban,
   Bot,
   Briefcase,
+  CalendarClock,
   Building,
   CircleArrowUp,
   CircleCheck,
@@ -64,6 +65,12 @@ export const STATUS: Record<string, StatusSpec> = {
   },
   CASE_CREATED: { label: "Case created", tone: "info", icon: Briefcase, hint: "A compliance case is open." },
   // --- cases -------------------------------------------------------------------
+  CASE_PENDING: {
+    label: "Pending start",
+    tone: "info",
+    icon: CalendarClock,
+    hint: "Approved and opened; the case window begins on its start date.",
+  },
   ACTIVE: { label: "Active", tone: "serious", icon: Briefcase, hint: "The case window is open." },
   EXPIRED: { label: "Expired", tone: "neutral", icon: Hourglass, hint: "The case window ended; closed by the system." },
   CLOSED: { label: "Closed", tone: "neutral", icon: Lock, hint: "An admin closed the case early, with a reason." },
@@ -93,6 +100,11 @@ const FALLBACK: StatusSpec = { label: "", tone: "neutral", icon: CircleDashed, h
 export function statusKey(raw: string | null | undefined): string {
   if (!raw) return "";
   return raw === "NO_MATCH" ? "UNMATCHED" : raw.toUpperCase();
+}
+
+/** A case's phase as a vocabulary key. Its `PENDING` is not the reviewer's `PENDING`. */
+export function casePhaseKey(phase: string | null | undefined): string {
+  return phase === "PENDING" ? "CASE_PENDING" : (phase ?? "");
 }
 
 export function statusSpec(raw: string | null | undefined): StatusSpec {

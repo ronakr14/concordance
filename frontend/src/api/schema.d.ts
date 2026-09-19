@@ -972,6 +972,8 @@ export interface components {
             match: components["schemas"]["MatchOut"] | null;
             /** Match Result Id */
             match_result_id: string | null;
+            /** @description `status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored. */
+            readonly phase: components["schemas"]["CasePhase"];
             provider: components["schemas"]["ProviderBriefOut"] | null;
             /** Provider Id */
             provider_id: string;
@@ -1052,6 +1054,8 @@ export interface components {
             id: string;
             /** Match Result Id */
             match_result_id: string | null;
+            /** @description `status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored. */
+            readonly phase: components["schemas"]["CasePhase"];
             /** Provider Id */
             provider_id: string;
             /** Provider Name */
@@ -1108,6 +1112,8 @@ export interface components {
             id: string;
             /** Match Result Id */
             match_result_id: string | null;
+            /** @description `status` as a person reads it: an `ACTIVE` case whose window has not begun is `PENDING`. Derived today, never stored. */
+            readonly phase: components["schemas"]["CasePhase"];
             /** Provider Id */
             provider_id: string;
             /**
@@ -1123,6 +1129,17 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * CasePhase
+         * @description What a person reads for a case: the stored status, with `ACTIVE` split.
+         *
+         *     Derived, never stored. A case opened with a future `start_date` is stored
+         *     `ACTIVE` - the partial unique index and the expiry job both need it to be -
+         *     but its window has not begun, so it reads as `PENDING`. Worked out at query
+         *     time, as provider compliance is, so it cannot go stale overnight.
+         * @enum {string}
+         */
+        CasePhase: "PENDING" | "ACTIVE" | "EXPIRED" | "CLOSED" | "REJECTED";
         /** CloseCaseIn */
         CloseCaseIn: {
             /** Reason */
@@ -1365,6 +1382,8 @@ export interface components {
             cases_closed: number;
             /** Cases Expired */
             cases_expired: number;
+            /** Cases Pending */
+            cases_pending: number;
             /** Conflicts */
             conflicts: number;
             /** Escalated */
@@ -2433,7 +2452,8 @@ export interface operations {
                 limit?: number;
                 /** @description Rows to skip. */
                 offset?: number;
-                status?: ("ACTIVE" | "EXPIRED" | "CLOSED" | "REJECTED") | null;
+                /** @description A case phase: `PENDING` is active but not yet begun. */
+                status?: ("PENDING" | "ACTIVE" | "EXPIRED" | "CLOSED" | "REJECTED") | null;
                 provider_id?: string | null;
                 conflict?: boolean;
                 /** @description Start date on or after. */

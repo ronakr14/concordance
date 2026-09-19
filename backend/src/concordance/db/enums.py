@@ -15,6 +15,7 @@ fails loudly instead of silently accepting a value the engine can never produce.
 
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 
 from sqlalchemy import CheckConstraint
@@ -102,6 +103,28 @@ class CaseStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class CasePhase(StrEnum):
+    """What a person reads for a case: the stored status, with `ACTIVE` split.
+
+    Derived, never stored. A case opened with a future `start_date` is stored
+    `ACTIVE` - the partial unique index and the expiry job both need it to be -
+    but its window has not begun, so it reads as `PENDING`. Worked out at query
+    time, as provider compliance is, so it cannot go stale overnight.
+    """
+
+    PENDING = "PENDING"
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    CLOSED = "CLOSED"
+    REJECTED = "REJECTED"
+
+
+def case_phase(status: str, start_date: date, today: date) -> CasePhase:
+    if status == CaseStatus.ACTIVE and start_date > today:
+        return CasePhase.PENDING
+    return CasePhase(status)
+
+
 class ExpectedOutcome(StrEnum):
     MATCH = "MATCH"
     NO_MATCH = "NO_MATCH"
@@ -135,6 +158,7 @@ class ProviderStatus(StrEnum):
 
 
 __all__ = [
+    "CasePhase",
     "CaseStatus",
     "Decision",
     "EvalStrategy",
@@ -148,6 +172,7 @@ __all__ = [
     "RunStatus",
     "SanctionFileStatus",
     "UserRole",
+    "case_phase",
     "check_values",
     "values",
 ]

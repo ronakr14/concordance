@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from concordance.db.enums import CaseStatus
+from concordance.db.enums import CasePhase, CaseStatus
 from concordance.db.models import Case
 from concordance.db.repositories.base import Page, paginate
 
@@ -43,10 +43,20 @@ class CaseRepository:
         date_to: date | None = None,
         limit: int | None = None,
         offset: int = 0,
+        today: date | None = None,
     ) -> Page[Case]:
-        """Cases, newest first. The date range is over `start_date`."""
+        """Cases, newest first. The date range is over `start_date`.
+
+        `status` is a `CasePhase`: `PENDING` and `ACTIVE` both select stored
+        `ACTIVE` rows and split them on whether the window has begun.
+        """
         stmt = select(Case).order_by(Case.created_at.desc(), Case.id)
-        if status:
+        day = today or datetime.now(UTC).date()
+        if status == CasePhase.PENDING:
+            stmt = stmt.where(Case.status == CaseStatus.ACTIVE, Case.start_date > day)
+        elif status == CasePhase.ACTIVE:
+            stmt = stmt.where(Case.status == CaseStatus.ACTIVE, Case.start_date <= day)
+        elif status:
             stmt = stmt.where(Case.status == status)
         if conflicts_only:
             stmt = stmt.where(Case.conflict_flag.is_(True))
