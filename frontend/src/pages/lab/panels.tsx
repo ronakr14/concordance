@@ -279,6 +279,12 @@ export function LlmCostPanel({
           </div>
           <div className="space-y-3">
             <IntervalPlot strategies={entry.strategies} />
+            {entry.sample.withheld?.length ? (
+              <p className="text-xs text-muted">
+                Not estimated here: {entry.sample.withheld.join(", ")}. Too few model calls answered at this level (at least{" "}
+                {entry.sample.min_answered ?? 30} per stratum are needed) to extrapolate honestly.
+              </p>
+            ) : null}
             {routed && everything ? (
               <p className="text-xs text-muted">
                 Records left for a person: {formatInt(Math.round(routed.review))} routed, {formatInt(Math.round(everything.review))} with the model deciding

@@ -75,8 +75,9 @@ export type LlmPoint = { level: number; value: number; lo: number; hi: number; e
 
 /** The sampled LLM levels as points with their 95% interval, for the same chart. */
 export function llmPoints(levels: LabLlmLevel[], metric: Metric): LlmPoint[] {
+  // A level whose routed estimate was withheld (too few calls answered) has no point to draw.
   return levels
-    .filter((l) => l.level != null)
+    .filter((l) => l.level != null && l.strategies.routed != null)
     .map((l) => {
       const routed = l.strategies.routed;
       const value = routed?.[metric] ?? 0;

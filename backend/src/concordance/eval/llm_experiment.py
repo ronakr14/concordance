@@ -19,13 +19,17 @@ by multiplying one number by another:
    the engine sent to the grey band, and records the engine decided.
 2. A sample is drawn from each of the last two, and only the sample is sent to
    the model. The grey-band sample serves both strategies - the request a
-   grey-band record produces is the same whichever of them sends it.
+   grey-band record produces is the same whichever of them sends it. Within
+   each stratum the sample is split, in proportion, across two cells: records
+   that truly match and records that do not. Their sizes are known exactly
+   from ground truth, which the Lab already scores against.
 3. Each strategy's true positives, false positives and review load are then
-   the exact counts for every stratum it leaves to the engine, plus the
-   sample's counts scaled to the stratum's size for every stratum it hands to
-   the model. Recall's denominator - how many records truly match - is known
-   exactly from ground truth, so it is never estimated.
-4. A **stratified bootstrap** (resampling within each stratum, never across)
+   the exact counts for every stratum it leaves to the engine, plus each
+   cell's sample counts scaled to that cell's size for every stratum it hands
+   to the model. Recall's denominator - how many records truly match - is known
+   exactly from ground truth, so it is never estimated, and because a true
+   positive can only come from a match cell, estimated recall cannot pass 1.
+4. A **stratified bootstrap** (resampling within each cell, never across)
    gives the interval. A 200-record sample cannot tell 0.95 from 0.96, and the
    chart should say so rather than draw two points as though it could.
 
@@ -41,6 +45,18 @@ reviews it. A call that never completed (every provider rate-limited or down)
 is not an answer about the record at all, so that record is dropped from the
 sample and the drop is reported, rather than being scored as though the model
 had chosen to abstain.
+
+Dropping is only safe if the calls that survive are still a random sample, and
+the obvious loop breaks that. Synthetic files are written scenario by scenario
+- every exact-NPI match first, the unmatched records last - so walking the
+sample in file order and running out of daily quota half way keeps the matches
+and drops the non-matches, and the scaled-up estimate reports more true
+positives than there are matches (a first real run did exactly that: F1 1.05).
+So the sample is called in a seeded random order, interleaved across both
+strata, and a quota cut leaves a smaller random sample rather than a biased
+one. A stratum left with fewer than `min_answered` answers is not estimated at
+all: the strategies that depend on it are withheld at that level rather than
+extrapolated from a handful of records.
 """
 
 from __future__ import annotations
@@ -66,7 +82,15 @@ log = get_logger("eval.llm_experiment")
 
 DEFAULT_SAMPLE = 100
 DEFAULT_BOOTSTRAP = 1_000
+#: Fewer answered calls than this in a stratum and it is not extrapolated.
+DEFAULT_MIN_ANSWERED = 30
 STRATEGIES = ("probabilistic", "routed", "everything")
+#: The sampled strata each estimated strategy is extrapolated from.
+DEPENDS_ON = {"routed": ("grey",), "everything": ("grey", "decided")}
+#: Sampling cells: stratum x whether the record truly matches.
+CELLS = ("grey:match", "grey:other", "decided:match", "decided:other")
+#: Each populated cell gets at least this many picks, where the stratum's sample allows.
+MIN_CELL = 5
 
 
 # --------------------------------------------------------------------------
@@ -246,6 +270,48 @@ def _mean(values: list[int]) -> float:
     return statistics.fmean(values) if values else 0.0
 
 
+def _allocate(sizes: Sequence[int], n: int) -> list[int]:
+    """Split a stratum's sample of `n` across its cells, proportional to size.
+
+    Largest-remainder rounding, so the parts sum to exactly
+    `min(n, sum(sizes))`. A populated cell that rounds below `MIN_CELL` is then
+    topped up from the largest part, so a small cell is never left without a
+    record to scale from.
+    """
+    total = sum(sizes)
+    n = min(n, total)
+    if not n:
+        return [0] * len(sizes)
+    shares = [n * size / total for size in sizes]
+    parts = [int(share) for share in shares]
+    by_remainder = sorted(range(len(sizes)), key=lambda i: -(shares[i] - parts[i]))
+    for i in by_remainder[: n - sum(parts)]:
+        parts[i] += 1
+    populated = sum(1 for s in sizes if s)
+    for i, size in enumerate(sizes):
+        floor = min(size, MIN_CELL, n // populated)
+        while parts[i] < floor:
+            donor = max(range(len(parts)), key=lambda j: parts[j])
+            if parts[donor] <= floor:
+                break
+            parts[donor] -= 1
+            parts[i] += 1
+    return parts
+
+
+def _tokens_per_call(
+    cells: dict[str, list[Any]], ok: dict[str, list[_Sampled]], stratum: str
+) -> tuple[float, float]:
+    """Mean prompt and completion tokens per call in a stratum, cells weighted by size."""
+    names = [c for c in CELLS if c.startswith(f"{stratum}:") and ok[c]]
+    weight = sum(len(cells[c]) for c in names)
+    if not weight:
+        return 0.0, 0.0
+    prompt = sum(len(cells[c]) * _mean([s.prompt_tokens for s in ok[c]]) for c in names)
+    completion = sum(len(cells[c]) * _mean([s.completion_tokens for s in ok[c]]) for c in names)
+    return prompt / weight, completion / weight
+
+
 def run_llm_experiment(
     prepared: PreparedDataset,
     engine: MatchingEngine,
@@ -258,6 +324,7 @@ def run_llm_experiment(
     top_k: int = 3,
     bootstrap: int = DEFAULT_BOOTSTRAP,
     on_progress: Callable[[int, int], None] | None = None,
+    min_answered: int = DEFAULT_MIN_ANSWERED,
 ) -> dict[str, Any]:
     """Score everything, sample two strata, adjudicate the sample, extrapolate.
 
@@ -287,10 +354,25 @@ def run_llm_experiment(
             decided.append((work, result))
             decided_engine.append(contribution(work, result))
 
+    # Sample within cells: stratum x whether the record truly matches. The
+    # match count of every cell is known exactly from ground truth, so scaling
+    # each cell by its own size means true positives can only come from match
+    # cells and never exceed them - recall cannot pass 1 on sampling noise, and
+    # the variance falls because its biggest source is stratified away.
+    cells: dict[str, list[tuple[RecordWork, MatchResult]]] = {name: [] for name in CELLS}
+    for stratum, members in (("grey", grey), ("decided", decided)):
+        for work, result in members:
+            truly = work.truth is not None and work.truth.expected_outcome is Outcome.MATCH
+            cells[f"{stratum}:{'match' if truly else 'other'}"].append((work, result))
+
     rng = random.Random(f"{seed}:{level}")
-    grey_pick = rng.sample(range(len(grey)), min(sample_per_stratum, len(grey)))
-    decided_pick = rng.sample(range(len(decided)), min(sample_per_stratum, len(decided)))
-    total_calls = len(grey_pick) + len(decided_pick)
+    picks: dict[str, list[int]] = {}
+    for stratum in ("grey", "decided"):
+        names = [c for c in CELLS if c.startswith(f"{stratum}:")]
+        sizes = [len(cells[c]) for c in names]
+        for name, n in zip(names, _allocate(sizes, sample_per_stratum), strict=True):
+            picks[name] = rng.sample(range(len(cells[name])), n)
+    total_calls = sum(len(v) for v in picks.values())
 
     def ask(result: MatchResult) -> tuple[Any, Any, int, int, bool]:
         request = adjudication_request(engine, result, top_k=top_k)
@@ -300,42 +382,74 @@ def run_llm_experiment(
         failed = after[2] > before[2] and outcome.abstained
         return request, outcome, after[0] - before[0], after[1] - before[1], failed
 
-    grey_ok: list[_Sampled] = []
-    decided_ok: list[_Sampled] = []
+    # The call order is random and interleaved across cells, so a run cut short
+    # by a quota leaves a random subsample of each - see the module docstring
+    # for what file order does instead.
+    order = [(name, i) for name in CELLS for i in picks[name]]
+    random.Random(f"{seed}:{level}:order").shuffle(order)
+
+    ok: dict[str, list[_Sampled]] = {name: [] for name in CELLS}
     failed = 0
     done = 0
-    for bucket, picks, target in ((grey, grey_pick, grey_ok), (decided, decided_pick, decided_ok)):
-        for index in sorted(picks):
-            work, result = bucket[index]
-            request, outcome, prompt, completion, call_failed = ask(result)
-            done += 1
-            if on_progress is not None:
-                on_progress(done, total_calls)
-            if call_failed:
-                failed += 1
-                continue
-            answered = apply_adjudication(result, request, outcome)
-            # Routed: only the grey band is ever sent, so a decided record keeps
-            # the engine's answer. Everything: the model is the decider, so a
-            # considered abstention is a record for a human.
-            everything = answered if not outcome.abstained else _to_review(result)
-            target.append(
-                _Sampled(
-                    work=work,
-                    engine=result,
-                    routed=answered if bucket is grey else result,
-                    everything=everything,
-                    prompt_tokens=prompt,
-                    completion_tokens=completion,
-                )
+    for name, index in order:
+        work, result = cells[name][index]
+        is_grey = name.startswith("grey:")
+        request, outcome, prompt, completion, call_failed = ask(result)
+        done += 1
+        if on_progress is not None:
+            on_progress(done, total_calls)
+        if call_failed:
+            failed += 1
+            continue
+        answered = apply_adjudication(result, request, outcome)
+        # Routed: only the grey band is ever sent, so a decided record keeps
+        # the engine's answer. Everything: the model is the decider, so a
+        # considered abstention is a record for a human.
+        everything = answered if not outcome.abstained else _to_review(result)
+        ok[name].append(
+            _Sampled(
+                work=work,
+                engine=result,
+                routed=answered if is_grey else result,
+                everything=everything,
+                prompt_tokens=prompt,
+                completion_tokens=completion,
             )
+        )
+    grey_ok = ok["grey:match"] + ok["grey:other"]
+    decided_ok = ok["decided:match"] + ok["decided:other"]
+
+    # A stratum is estimable when at least `min_answered` of its calls
+    # answered - or all of them, where fewer were planned - and no populated
+    # cell in it was left with nothing to scale. The bar is against the planned
+    # sample, not the stratum, so a small sample asked for deliberately is
+    # reported with the wide interval it has; the guard is for samples a quota
+    # cut short. An empty stratum needs no sample at all.
+    def planned(stratum: str) -> int:
+        return sum(len(picks[c]) for c in CELLS if c.startswith(f"{stratum}:"))
+
+    answered_by = {"grey": (len(grey_ok), len(grey)), "decided": (len(decided_ok), len(decided))}
+    short = sorted(
+        stratum
+        for stratum, (got, size) in answered_by.items()
+        if size
+        and (
+            got < min(min_answered, planned(stratum))
+            or any(cells[c] and not ok[c] for c in CELLS if c.startswith(f"{stratum}:"))
+        )
+    )
 
     exact_none = _sum(none)
     exact_decided = _sum(decided_engine)
     exact_grey = _sum(grey_engine)
 
+    # Contributions are computed once per sampled record, so the bootstrap's
+    # resamples are arithmetic rather than re-scoring.
+    routed_c = {c: [contribution(s.work, s.routed) for s in ok[c]] for c in CELLS}
+    every_c = {c: [contribution(s.work, s.everything) for s in ok[c]] for c in CELLS}
+
     def estimates(
-        g: Sequence[_Sampled], d: Sequence[_Sampled]
+        pick: Callable[[str, list[Contribution]], list[Contribution]],
     ) -> dict[str, Estimate]:
         return {
             "probabilistic": _estimate(
@@ -343,62 +457,57 @@ def run_llm_experiment(
             ),
             "routed": _estimate(
                 exact_none + exact_decided,
-                [([contribution(s.work, s.routed) for s in g], len(grey))],
+                [(pick(c, routed_c[c]), len(cells[c])) for c in CELLS if c.startswith("grey:")],
                 expected_matches,
             ),
             "everything": _estimate(
                 exact_none,
-                [
-                    ([contribution(s.work, s.everything) for s in g], len(grey)),
-                    ([contribution(s.work, s.everything) for s in d], len(decided)),
-                ],
+                [(pick(c, every_c[c]), len(cells[c])) for c in CELLS],
                 expected_matches,
             ),
         }
 
-    point = estimates(grey_ok, decided_ok)
+    point = estimates(lambda _c, items: items)
 
-    # Stratified bootstrap. Contributions are precomputed once per sampled
-    # record so each resample is arithmetic, not re-scoring.
+    # Stratified bootstrap: resample within each cell, never across. The same
+    # indices serve both strategies, because they were measured on the same
+    # calls.
     boot_rng = random.Random(f"{seed}:{level}:bootstrap")
     draws: dict[str, dict[str, list[float]]] = {
         name: {"precision": [], "recall": [], "f1": []} for name in ("routed", "everything")
     }
-    g_routed = [contribution(s.work, s.routed) for s in grey_ok]
-    g_every = [contribution(s.work, s.everything) for s in grey_ok]
-    d_every = [contribution(s.work, s.everything) for s in decided_ok]
     if grey_ok or decided_ok:
         for _ in range(bootstrap):
-            gi = [boot_rng.randrange(len(grey_ok)) for _ in grey_ok]
-            di = [boot_rng.randrange(len(decided_ok)) for _ in decided_ok]
-            routed = _estimate(
-                exact_none + exact_decided,
-                [([g_routed[i] for i in gi], len(grey))],
-                expected_matches,
-            )
-            every = _estimate(
-                exact_none,
-                [([g_every[i] for i in gi], len(grey)), ([d_every[i] for i in di], len(decided))],
-                expected_matches,
-            )
-            for name, est in (("routed", routed), ("everything", every)):
+            drawn = {c: [boot_rng.randrange(len(ok[c])) for _ in ok[c]] for c in CELLS}
+
+            def resample(
+                c: str, items: list[Contribution], drawn: dict[str, list[int]] = drawn
+            ) -> list[Contribution]:
+                return [items[i] for i in drawn[c]]
+
+            resampled = estimates(resample)
+            for name in ("routed", "everything"):
+                est = resampled[name]
                 draws[name]["precision"].append(est.precision)
                 draws[name]["recall"].append(est.recall)
                 draws[name]["f1"].append(est.f1)
 
     strategies: dict[str, Any] = {}
+    withheld: list[str] = []
     for name in STRATEGIES:
+        if any(stratum in short for stratum in DEPENDS_ON.get(name, ())):
+            withheld.append(name)
+            continue
         row = _metrics(point[name])
         row["exact"] = name == "probabilistic"
         if name in draws:
             row["interval"] = {k: _interval(v) for k, v in draws[name].items()}
         strategies[name] = row
 
-    # Cost: calls are exact (stratum sizes), tokens per call come from the sample.
-    grey_prompt = _mean([s.prompt_tokens for s in grey_ok])
-    grey_completion = _mean([s.completion_tokens for s in grey_ok])
-    dec_prompt = _mean([s.prompt_tokens for s in decided_ok])
-    dec_completion = _mean([s.completion_tokens for s in decided_ok])
+    # Cost: calls are exact (stratum sizes), tokens per call come from the
+    # sample, each cell weighted by its share of the stratum.
+    grey_prompt, grey_completion = _tokens_per_call(cells, ok, "grey")
+    dec_prompt, dec_completion = _tokens_per_call(cells, ok, "decided")
 
     def spend(calls_grey: int, calls_decided: int) -> dict[str, Any]:
         prompt = calls_grey * grey_prompt + calls_decided * dec_prompt
@@ -424,6 +533,15 @@ def run_llm_experiment(
             f"{failed} sampled call(s) never completed (provider errors) and were "
             "dropped from the sample rather than scored as abstentions"
         )
+    if withheld:
+        detail = ", ".join(
+            f"{name} {answered_by[name][0]} of {planned(name)}"
+            for name in short
+        )
+        notes.append(
+            f"too few calls answered to extrapolate ({detail}; at least "
+            f"{min_answered} needed): {', '.join(withheld)} not estimated at this level"
+        )
     if not grey:
         notes.append("the engine sent nothing to the grey band at this level")
     if price.free or (price.prompt_per_million == 0 and price.completion_per_million == 0):
@@ -441,11 +559,15 @@ def run_llm_experiment(
             "grey": len(grey),
             "decided": len(decided),
             "expected_matches": expected_matches,
+            "cells": {c: len(cells[c]) for c in CELLS},
         },
         "sample": {
             "grey": len(grey_ok),
             "decided": len(decided_ok),
             "failed": failed,
+            "cells": {c: len(ok[c]) for c in CELLS},
+            "min_answered": min_answered,
+            "withheld": withheld,
             "live_calls": meter.live,
             "cache_hits": meter.cached,
             "seconds": round(time.perf_counter() - started, 1),
@@ -475,8 +597,9 @@ def run_llm_experiment(
         decided=len(decided),
         sampled=len(grey_ok) + len(decided_ok),
         failed=failed,
-        routed_f1=strategies["routed"]["f1"],
-        everything_f1=strategies["everything"]["f1"],
+        withheld=withheld,
+        routed_f1=strategies.get("routed", {}).get("f1"),
+        everything_f1=strategies.get("everything", {}).get("f1"),
     )
     return payload
 

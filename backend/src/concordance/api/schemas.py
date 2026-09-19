@@ -745,12 +745,23 @@ class LlmPopulationOut(ApiModel):
     grey: int
     decided: int
     expected_matches: int
+    cells: dict[str, int] = Field(
+        default_factory=dict, description="Records per sampling cell: stratum x truly matches."
+    )
 
 
 class LlmSampleOut(ApiModel):
     grey: int
     decided: int
     failed: int
+    cells: dict[str, int] = Field(
+        default_factory=dict, description="Answered calls per sampling cell."
+    )
+    min_answered: int | None = None
+    withheld: list[str] = Field(
+        default_factory=list,
+        description="Strategies not estimated at this level: too few of their calls answered.",
+    )
     live_calls: int
     cache_hits: int
     seconds: float

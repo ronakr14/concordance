@@ -84,6 +84,8 @@ class OracleProvider:
     supports_structured_output: bool = False
     calls: int = 0
     fail_every: int = 0
+    #: Answer this many calls, then fail every one after - a daily quota running out.
+    quota: int = 0
     seen: list[str] = field(default_factory=list)
 
     def complete(
@@ -92,6 +94,8 @@ class OracleProvider:
         self.calls += 1
         if self.fail_every and self.calls % self.fail_every == 0:
             raise Transient("scripted outage", provider=self.name)
+        if self.quota and self.calls > self.quota:
+            raise Transient("scripted quota exhausted", provider=self.name)
         # The last evidence block is the record being asked about; any earlier
         # ones are the prompt's few-shot examples.
         prompt = next(m.content for m in reversed(messages) if "<<<EVIDENCE" in m.content)
@@ -220,6 +224,52 @@ def test_a_call_that_never_completed_is_dropped_and_reported(
         30, payload["population"]["grey"]
     ) + min(30, payload["population"]["decided"])
     assert any("never completed" in note for note in payload["notes"])
+
+
+def test_a_quota_that_runs_out_leaves_a_random_subsample_of_both_strata(
+    prepared: Any, engine: Any
+) -> None:
+    """The regression behind a real run reporting F1 1.05.
+
+    The synthetic file is ordered by scenario, matches first. Calling the sample
+    in file order, grey band first, and losing the tail to a quota kept the
+    matches and the grey band and dropped the rest, so the scaled estimate
+    found more true positives than there are matches.
+    """
+    oracle = OracleProvider(truth=_truth(prepared), quota=70)
+    judge, meter, _ = _adjudicator(oracle)
+    payload = run_llm_experiment(
+        prepared, engine, judge, meter, "priced", PRICE, seed=SEED, sample_per_stratum=100,
+        bootstrap=50,
+    )
+    sample = payload["sample"]
+    assert sample["failed"] > 0
+    # Interleaved: the cut takes from both strata, not the whole of the second.
+    assert sample["grey"] > 0
+    assert sample["decided"] > 0
+    # Random order: the answered records are not a prefix of the file.
+    order = {w.record_id: i for i, w in enumerate(prepared)}
+    answered = [order[r] for r in oracle.seen]
+    assert answered != sorted(answered)
+    for name, row in payload["strategies"].items():
+        assert 0.0 <= row["recall"] <= 1.0, name
+        assert 0.0 <= row["f1"] <= 1.0, name
+
+
+def test_a_stratum_with_too_few_answers_is_withheld_not_extrapolated(
+    prepared: Any, engine: Any
+) -> None:
+    judge, meter, _ = _adjudicator(OracleProvider(truth=_truth(prepared), quota=6))
+    payload = run_llm_experiment(
+        prepared, engine, judge, meter, "priced", PRICE, seed=SEED, sample_per_stratum=60,
+        bootstrap=10,
+    )
+    assert set(payload["sample"]["withheld"]) == {"routed", "everything"}
+    assert set(payload["strategies"]) == {"probabilistic"}
+    assert payload["strategies"]["probabilistic"]["exact"] is True
+    assert any("too few calls answered" in note for note in payload["notes"])
+    # Calls are counted from stratum sizes, not the sample, so cost survives.
+    assert payload["cost"]["routed"]["calls"] == payload["population"]["grey"]
 
 
 # --------------------------------------------------------------------------

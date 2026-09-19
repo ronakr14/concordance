@@ -57,13 +57,40 @@ honest:
    agree), grey band (the engine abstained), and decided.
 2. **Sample the grey and decided strata** (100 each by default) and send only
    the sample to the model. A grey-band record produces the same request under
-   either strategy, so one call serves both.
+   either strategy, so one call serves both. Each stratum's sample is split
+   across two **cells**, records that truly match and records that do not,
+   in proportion to their size (each populated cell gets at least five).
 3. **Combine exact counts with scaled sample counts.** Each strategy's true and
    false positives are the exact counts in every stratum it leaves to the
-   engine, plus the sample's counts scaled to stratum size where it asks the
-   model. Recall's denominator (how many records truly match) comes from ground
-   truth and is never estimated.
-4. **Stratified bootstrap** for the interval, resampling within strata only.
+   engine, plus each cell's sample counts scaled to that cell's size where it
+   asks the model. Recall's denominator (how many records truly match) comes
+   from ground truth and is never estimated. Because a true positive can only
+   come from a match cell, and each match cell is scaled to its exact size,
+   estimated recall cannot exceed 1.
+4. **Stratified bootstrap** for the interval, resampling within cells only.
+
+Stratifying on ground truth is not using the answer key to flatter the model:
+the calls are the same, and the Lab already uses ground truth for every
+number it reports. It changes how the sample is drawn and weighted, which is
+what auxiliary information is for in any stratified survey.
+
+### When a run is cut short
+
+Free tiers have daily quotas, and a run that exhausts them keeps going with
+every remaining call failing. Two rules keep that from biasing the result:
+
+- **Calls go out in a seeded random order, interleaved across all cells.**
+  The synthetic files are written scenario by scenario, matches first. The
+  first real run called its sample in file order, grey band first, and lost
+  the tail to the quota: it kept the matches, dropped the rest, and reported an
+  LLM-on-everything F1 of 1.05. With random order a cut leaves a smaller random
+  sample, not a biased one.
+- **A stratum with too few answers is withheld, not extrapolated.** Below 30
+  (or below the whole planned sample, where fewer than 30 were asked for)
+  answered calls in a stratum (or with a populated cell left empty), the
+  strategies that depend on it are not estimated at that level: routed needs
+  the grey band, LLM-on-everything needs both. The call counts are exact and
+  are still reported; the panel says which strategies were withheld and why.
 
 The test suite checks the estimator the hard way: with the sample set larger
 than the strata (a scaling factor of one), the routed estimate must equal an

@@ -1244,7 +1244,7 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 - [x] **Reliability diagram**, before and after calibration, with the perfect-calibration reference line ⭐ — on the fit's holdout, bins as points sized by count; the sweep now records the fit's before/after per level and model
 - [x] ECE and Brier displayed alongside the diagram
 - [x] Grey-band width indicator — the confidence scale with both thresholds on it, plus the share of records that land in the band
-- [ ] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐ — built and tested (`eval/llm_experiment.py`: stratified sample, exact strata sizes, stratified bootstrap; `docs/lab.md`). Open until the real free-tier sample finishes
+- [ ] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐ — built and tested (`eval/llm_experiment.py`: sample stratified by stratum x true-match cell, exact cell sizes, stratified bootstrap; `docs/lab.md`). The first real run (2026-09-19) was invalidated: called in file order and cut short by both free-tier daily quotas, it kept the match-heavy head of the file and reported F1 1.05. Fixed (random interleaved call order, truth-stratified cells, under-answered levels withheld); open until a rerun completes after the quota resets
 - [ ] F1 comparison against that baseline, proving routing costs little accuracy ⭐
 - [x] Blocking recall displayed
 - [x] Per-scenario accuracy breakdown

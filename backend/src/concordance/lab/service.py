@@ -382,21 +382,25 @@ def run_llm(session: Session, settings: Settings, lab_id: uuid.UUID) -> dict[str
                 )
                 payload["config_id"] = fit.config.config_id
                 payload["prompt_version"] = adjudicator.prompt_version
-                routed = payload["strategies"]["routed"]
+                # Withheld when too few grey-band calls answered: the row still
+                # records the cost and the reason, with no accuracy to plot.
+                routed = payload["strategies"].get("routed")
                 session.add(
                     EvalRun(
                         sweep_id=row.id,
                         corruption_level=level,
                         strategy=str(StrategyName.PROBABILISTIC_LLM),
-                        precision=routed["precision"],
-                        recall=routed["recall"],
-                        f1=routed["f1"],
-                        false_positives=round(routed["false_positives"]),
+                        precision=routed["precision"] if routed else None,
+                        recall=routed["recall"] if routed else None,
+                        f1=routed["f1"] if routed else None,
+                        false_positives=round(routed["false_positives"]) if routed else 0,
                         false_negatives=max(
                             0,
                             payload["population"]["expected_matches"]
                             - round(routed["true_positives"]),
-                        ),
+                        )
+                        if routed
+                        else 0,
                         brier=None,
                         ece=None,
                         reliability_bins={},

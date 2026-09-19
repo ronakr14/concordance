@@ -1729,6 +1729,13 @@ export interface components {
         };
         /** LlmPopulationOut */
         LlmPopulationOut: {
+            /**
+             * Cells
+             * @description Records per sampling cell: stratum x truly matches.
+             */
+            cells?: {
+                [key: string]: number;
+            };
             /** Decided */
             decided: number;
             /** Expected Matches */
@@ -1744,6 +1751,13 @@ export interface components {
         LlmSampleOut: {
             /** Cache Hits */
             cache_hits: number;
+            /**
+             * Cells
+             * @description Answered calls per sampling cell.
+             */
+            cells?: {
+                [key: string]: number;
+            };
             /** Decided */
             decided: number;
             /** Failed */
@@ -1752,8 +1766,15 @@ export interface components {
             grey: number;
             /** Live Calls */
             live_calls: number;
+            /** Min Answered */
+            min_answered?: number | null;
             /** Seconds */
             seconds: number;
+            /**
+             * Withheld
+             * @description Strategies not estimated at this level: too few of their calls answered.
+             */
+            withheld?: string[];
         };
         /** LlmSpendOut */
         LlmSpendOut: {

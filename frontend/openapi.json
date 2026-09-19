@@ -2584,6 +2584,14 @@
       "LlmPopulationOut": {
         "additionalProperties": false,
         "properties": {
+          "cells": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Records per sampling cell: stratum x truly matches.",
+            "title": "Cells",
+            "type": "object"
+          },
           "decided": {
             "title": "Decided",
             "type": "integer"
@@ -2622,6 +2630,14 @@
             "title": "Cache Hits",
             "type": "integer"
           },
+          "cells": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Answered calls per sampling cell.",
+            "title": "Cells",
+            "type": "object"
+          },
           "decided": {
             "title": "Decided",
             "type": "integer"
@@ -2638,9 +2654,28 @@
             "title": "Live Calls",
             "type": "integer"
           },
+          "min_answered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Answered"
+          },
           "seconds": {
             "title": "Seconds",
             "type": "number"
+          },
+          "withheld": {
+            "description": "Strategies not estimated at this level: too few of their calls answered.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Withheld",
+            "type": "array"
           }
         },
         "required": [
