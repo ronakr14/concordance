@@ -71,7 +71,7 @@ export function EvidenceTable({
               <th scope="col" className="px-3 py-2 font-medium">Sanction record</th>
               <th scope="col" className="px-3 py-2 font-medium">Candidate</th>
               <th scope="col" className="px-3 py-2 font-medium">Agreement</th>
-              <th scope="col" className="px-3 py-2 text-right font-medium">
+              <th scope="col" className="px-3 py-2 text-right font-medium whitespace-nowrap">
                 <Tip content="m: how often true matches agree at this level. u: how often non-matches do. The weight is log₂(m/u).">
                   <span className="cursor-help underline decoration-dotted underline-offset-2">m / u</span>
                 </Tip>
@@ -162,7 +162,7 @@ function EvidenceRow({
           <span className="text-xs text-muted">—</span>
         )}
       </td>
-      <td className="tabular px-3 py-2 text-right text-xs text-ink-2">
+      <td className="tabular px-3 py-2 text-right text-xs whitespace-nowrap text-ink-2">
         {term?.m != null && term.u != null ? `${term.m.toFixed(3)} / ${term.u < 0.001 ? term.u.toExponential(0) : term.u.toFixed(3)}` : "—"}
       </td>
       <td className="px-4 py-2">{term ? <WeightBar weight={term.weight} scale={scale} /> : <span className="text-xs text-muted">—</span>}</td>

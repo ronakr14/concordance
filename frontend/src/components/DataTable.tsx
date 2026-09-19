@@ -161,7 +161,7 @@ export function DataTable<T extends object>(props: DataTableProps<T>) {
       </div>
 
       <div className="overflow-x-auto">
-        <table className={cn("w-full border-collapse text-sm", props.dense && "text-xs")}>
+        <table className={cn("w-full border-collapse text-sm", props.dense && "text-xs")} aria-busy={loading || undefined}>
           <caption className="sr-only">{props.caption}</caption>
           <thead className="bg-surface-2 text-left text-xs text-muted">
             {table.getHeaderGroups().map((group) => (

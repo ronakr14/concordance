@@ -16,6 +16,11 @@
 //   as theft and revokes every session of that user.
 // - If the refresh itself fails, the session is over: listeners are told, and
 //   the app sends the user to the login page with their place remembered.
+// - JavaScript cannot see the cookie, so it cannot know whether a refresh on
+//   boot can succeed. A flag in localStorage records that one probably can: it
+//   holds no credential, only "a session was live here". Without it, every
+//   signed-out visit would make a refresh the server must refuse, and put a
+//   401 in the console for nothing.
 
 import createClient from "openapi-fetch";
 
@@ -37,14 +42,35 @@ export function onSessionEvent(listener: (event: SessionEvent) => void): () => v
   return () => listeners.delete(listener);
 }
 
+const SESSION_HINT = "concordance.session";
+
+function hint(live: boolean): void {
+  try {
+    if (live) localStorage.setItem(SESSION_HINT, "1");
+    else localStorage.removeItem(SESSION_HINT);
+  } catch {
+    // Storage blocked: boot will simply not try to restore the session.
+  }
+}
+
+function hinted(): boolean {
+  try {
+    return localStorage.getItem(SESSION_HINT) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function setToken(token: TokenOut): void {
   accessToken = token.access_token;
   expiresAt = Date.parse(token.expires_at);
+  hint(true);
 }
 
 export function clearSession(): void {
   accessToken = null;
   expiresAt = 0;
+  hint(false);
 }
 
 export function hasSession(): boolean {
@@ -199,7 +225,7 @@ export async function login(email: string, password: string): Promise<User> {
 }
 
 export async function restoreSession(): Promise<User | null> {
-  if (!(await refreshSession())) return null;
+  if (!hinted() || !(await refreshSession())) return null;
   try {
     return await unwrap(api.GET("/auth/me"));
   } catch {
