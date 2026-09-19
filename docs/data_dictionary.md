@@ -85,6 +85,24 @@ How one authority's headers map onto the canonical field set (Q1).
 
 - `uq_column_mappings_source_authority_name` on column_mappings.source_authority, column_mappings.name (unique)
 
+### `config_activations`
+
+Every decision to make a scoring config the one new runs score with. The active
+config is the newest row; nothing on `scoring_configs` changes when it switches.
+
+| Column | Type | Null | Default | Meaning |
+|---|---|---|---|---|
+| `id` | `BIGINT` | no | identity | Surrogate primary key. Breaks ties between activations in the same instant. |
+| `scoring_config_id` | `UUID` | no | — | The config made active. |
+| `activated_by` | `UUID` | yes | — | Who activated it. Null for the migration's seed row and for a first run that activated the only config there was. |
+| `reason` | `TEXT` | yes | — | Why - for example, the holdout numbers that justified a retune. |
+| `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When it became active. |
+
+**Indexes**
+
+- `ix_config_activations_created_at` on config_activations.created_at
+- `ix_config_activations_scoring_config_id` on config_activations.scoring_config_id
+
 ### `eval_runs`
 
 | Column | Type | Null | Default | Meaning |
@@ -174,7 +192,7 @@ One Lab experiment: a corruption sweep, or an LLM sample that extends one. Writt
 
 | Column | Type | Null | Default | Meaning |
 |---|---|---|---|---|
-| `kind` | `VARCHAR(20)` | no | — | What was measured. One of ('sweep', 'llm'). |
+| `kind` | `VARCHAR(20)` | no | — | What was measured. One of ('sweep', 'llm', 'feedback'). |
 | `parent_id` | `UUID` | yes | — | For an LLM experiment, the sweep whose datasets and seed it reuses. |
 | `status` | `VARCHAR(20)` | no | `QUEUED` | Lifecycle state. One of ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED'). |
 | `requested_by` | `UUID` | yes | — | Who asked for it. Null when the system did. |
@@ -261,6 +279,7 @@ The engine's decision per record per run. Superseded rather than updated (Q5).
 | `approved_provider_id` | `VARCHAR(64)` | yes | — | The provider a reviewer approved. Kept beside `chosen_provider_id` rather than overwriting it: on an ambiguous result the engine's column holds only its top-ranked candidate, and the reviewer's pick often differs. |
 | `superseded_by` | `UUID` | yes | — | The later result that replaced this one (Q5). Null means this row is current; every list query filters on that. |
 | `superseded_at` | `TIMESTAMP WITH TIME ZONE` | yes | — | When it was superseded. |
+| `audit_sampled` | `BOOLEAN` | no | `false` | Drawn into the random audit of auto-rejects: a `NO_MATCH` with candidates, sent for review with inclusion probability `reconciliation_runs.audit_rate`. The only unbiased labels below the reject threshold. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
 | `updated_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was last modified. Maintained by the ORM's `onupdate`. |
@@ -268,6 +287,7 @@ The engine's decision per record per run. Superseded rather than updated (Q5).
 **Indexes**
 
 - `ix_match_results_created_at` on match_results.created_at
+- `ix_match_results_current_audit` on match_results.review_status (partial: `audit_sampled AND superseded_by IS NULL`) — the queue's audit filter
 - `ix_match_results_current` on match_results.run_id, match_results.review_status (partial: `superseded_by IS NULL`)
 - `ix_match_results_current_chosen_provider` on match_results.chosen_provider_id (partial: `superseded_by IS NULL`) — the provider directory's derived compliance status
 - `ix_match_results_current_confidence` on calibrated_confidence DESC NULLS LAST (partial: `superseded_by IS NULL`)
@@ -369,6 +389,7 @@ The provider master. Written only by the loader; read by everything.
 | `llm_cost_usd` | `NUMERIC(12, 6)` | no | `0` | Cost from the price table. Numeric rather than float because it is summed across runs. |
 | `error` | `TEXT` | yes | — | Failure detail when `status` is `FAILED`. |
 | `job_id` | `BIGINT` | yes | — | The queue row executing this run, when it was started through the API. Null for a run started from the CLI. |
+| `audit_rate` | `FLOAT` | yes | — | The share of auto-rejects with candidates drawn into the audit sample (`AUDIT_RATE` at run time). Null on runs from before the audit existed. |
 | `created_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the row was inserted. Server clock, not the client's. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
 
@@ -378,6 +399,23 @@ The provider master. Written only by the loader; read by everything.
 - `ix_reconciliation_runs_file_id` on reconciliation_runs.file_id
 - `ix_reconciliation_runs_status` on reconciliation_runs.status
 - `uq_reconciliation_runs_live_scope` on coalesce(file_id, nil UUID) (unique; partial: `status IN ('QUEUED', 'RUNNING')`). One live run per file, and one for the global scope.
+
+### `run_patterns`
+
+A run's whole candidate-pair tally: each distinct comparison vector and how
+often it occurred, per model. Every blocked pair, not only the top-k in
+`match_candidates` - this is the population a retune fits EM on.
+
+| Column | Type | Null | Default | Meaning |
+|---|---|---|---|---|
+| `run_id` | `UUID` | no | — | The run. Part of the primary key. |
+| `kind` | `VARCHAR(20)` | no | — | The model the pairs were scored under: `individual` or `organization`. Part of the primary key. |
+| `pattern` | `SMALLINT[]` | no | — | The comparison vector: one agreement level per field, in the model's field order. Part of the primary key. |
+| `n` | `INTEGER` | no | — | How many candidate pairs in the run had exactly this vector. |
+
+**Indexes**
+
+- `pk_run_patterns` on run_patterns.run_id, run_patterns.kind, run_patterns.pattern (primary key)
 
 ### `refresh_tokens`
 
@@ -490,12 +528,16 @@ One row per row of an uploaded file, extracted into the canonical fields with th
 | `t_auto_reject` | `FLOAT` | no | — | Posterior at or below which the engine decides `NO_MATCH`. Between the two is the grey band. |
 | `calibrator` | `JSONB` | no | `'{}'::jsonb` | JSONB knots of the fitted isotonic calibrator, so a stored confidence is reproducible without refitting. |
 | `fitted_at` | `TIMESTAMP WITH TIME ZONE` | no | `now()` | When the fit ran. |
-| `fitted_from` | `VARCHAR(20)` | no | `em` | How the parameters were obtained. One of ('em', 'supervised', 'manual'). |
+| `fitted_from` | `VARCHAR(20)` | no | `em` | How the parameters were obtained. One of ('em', 'supervised', 'semi_supervised', 'manual'). |
 | `notes` | `TEXT` | yes | — | Free text about the fit - what dataset, what changed. |
+| `parent_id` | `UUID` | yes | — | The config a retune started from. Null for an EM fit. The chain of these is a config's lineage. |
+| `metrics` | `JSONB` | no | `'{}'::jsonb` | JSONB: what the fit measured when it was written - labels used by source, the holdout it was judged on, and the parent's numbers on that same holdout. |
+| `created_by` | `UUID` | yes | — | Who asked for the fit. Null for a CLI or migration import. |
 | `id` | `UUID` | no | `gen_random_uuid()` | Surrogate primary key. |
 
 **Indexes**
 
+- `ix_scoring_configs_parent_id` on scoring_configs.parent_id
 - `uq_scoring_configs_version` on scoring_configs.version (unique)
 
 ### `users`
@@ -529,7 +571,7 @@ defined once in `db/enums.py` and the constraint is generated from them.
 | `sanction_files.status` | `INSPECTED`, `COMMITTED`, `REJECTED` |
 | `providers.status` | `ACTIVE`, `INACTIVE`, `RETIRED` |
 | `reconciliation_runs.status` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
-| `scoring_configs.fitted_from` | `em`, `supervised`, `manual` |
+| `scoring_configs.fitted_from` | `em`, `supervised`, `semi_supervised`, `manual` |
 | `match_results.decision` | `MATCH`, `AMBIGUOUS`, `NO_MATCH` |
 | `match_results.route` | `deterministic`, `probabilistic`, `llm` |
 | `match_results.review_status` | `PENDING`, `APPROVED`, `REJECTED`, `ESCALATED` |
@@ -538,7 +580,7 @@ defined once in `db/enums.py` and the constraint is generated from them.
 | `eval_runs.strategy` | `deterministic`, `fuzzy`, `probabilistic`, `probabilistic_llm` |
 | `feedback_events.label` | `TRUE_MATCH`, `FALSE_MATCH` |
 | `jobs.status` | `PENDING`, `RUNNING`, `DONE`, `FAILED`, `DEAD` |
-| `lab_sweeps.kind` | `sweep`, `llm` |
+| `lab_sweeps.kind` | `sweep`, `llm`, `feedback` |
 | `lab_sweeps.status` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 
 ---
