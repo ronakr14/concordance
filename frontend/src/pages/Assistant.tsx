@@ -52,7 +52,16 @@ function AnswerChart({ rows, measure }: { rows: { label: string; value: number }
             )}
           />
           <Bar dataKey="value" fill={t.series1} radius={[0, 4, 4, 0]} isAnimationActive={false} barSize={14}>
-            <LabelList dataKey="value" position="right" fill={t.ink2} fontSize={11} formatter={(v: number) => formatInt(v)} />
+            {/* Recharts types the formatter's argument as renderable text,
+                which includes undefined, so the cast to a number happens here
+                rather than in the signature. */}
+            <LabelList
+              dataKey="value"
+              position="right"
+              fill={t.ink2}
+              fontSize={11}
+              formatter={(v) => formatInt(Number(v))}
+            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

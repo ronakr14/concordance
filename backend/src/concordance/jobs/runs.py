@@ -107,7 +107,15 @@ def start_run(
 
 
 def cancel_run(session: Session, actor: Actor, run_id: uuid.UUID) -> ReconciliationRun:
-    run = session.get(ReconciliationRun, run_id, with_for_update=True)
+    # `of=` names the table to lock, and it is not optional here.
+    # `ReconciliationRun.scoring_config` is `lazy="joined"`, so loading a run
+    # emits a LEFT OUTER JOIN, and Postgres refuses `FOR UPDATE` on the
+    # nullable side of one: a bare `with_for_update=True` fails the whole
+    # request with `FeatureNotSupported`. Locking the run's own row is also
+    # what was meant - the config is read, never written, on this path.
+    run = session.get(
+        ReconciliationRun, run_id, with_for_update={"of": ReconciliationRun}
+    )
     if run is None:
         raise NotFoundError(f"no run {run_id}")
     if run.status not in LIVE:

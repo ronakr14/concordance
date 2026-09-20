@@ -249,6 +249,16 @@ def preflight(args: list[str]) -> int:
     )
 
 
+def demo(args: list[str]) -> int:
+    """Build the demo state: dataset, users, two runs to diff, a review queue."""
+    v = _vars(args)
+    argv = [PY, str(ROOT / "scripts" / "demo.py")]
+    for key in ("KEEP", "YES"):
+        if v.get(key, "").lower() in {"1", "true", "yes"}:
+            argv.append(f"{key}=1")
+    return _run(*argv)
+
+
 def reset_db(args: list[str]) -> int:
     """Empty every table in the hosted database. What `compose down -v` did."""
     v = _vars(args)
@@ -296,6 +306,7 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "logs": logs,
     "preflight": preflight,
     "reset-db": reset_db,
+    "demo": demo,
 }
 
 

@@ -1381,16 +1381,16 @@ failure rather than an application one — which is still exactly why this stage
 
 ### Documentation
 
-- [ ] `README.md`: one-paragraph pitch leading with the 90%-incorrect-data problem ⭐
+- [x] `README.md`: one-paragraph pitch leading with the 90%-incorrect-data problem ⭐
 - [ ] README: architecture diagram
 - [ ] README: **reliability diagram screenshot** ⭐
 - [ ] README: **robustness curve screenshot** ⭐
 - [ ] README: Investigation page screenshot ⭐
-- [ ] README: quick start, verified by following it verbatim on a clean checkout ⭐
-- [ ] README: "why this is not just a fuzzy matcher" section ⭐
-- [ ] README: measured results table — precision, recall, F1, ECE, blocking recall, LLM cost saving ⭐
-- [ ] README: tech stack and the reasoning behind the non-obvious choices (Postgres queue over Celery, learned weights over tuned weights)
-- [ ] `docs/architecture.md` complete
+- [ ] README: quick start, verified by following it verbatim on a clean checkout ⭐ — written, not yet followed verbatim
+- [x] README: "why this is not just a fuzzy matcher" section ⭐ — five points, each one a consequence of taking calibration seriously rather than a feature
+- [x] README: measured results table — F1 against the corruption dial, ECE before and after isotonic, blocking recall against candidate cost, and F1 across review rounds ⭐. The LLM cost saving is the one number still missing, because its experiment is still running
+- [x] README: tech stack and the reasoning behind the non-obvious choices — in the README's architecture section, and at length in `docs/architecture.md` §9, which gives each choice the alternative it was made against
+- [x] `docs/architecture.md` complete — the three processes, the request path, the four protocol seams and their two implementations each, the three database roles and why the app role must not own its tables, the assistant's two defences, and what is deliberately absent
 - [ ] `docs/data_dictionary.md` complete and current
 - [ ] `docs/matching_engine.md` complete and current
 - [ ] `docs/scenario_catalogue.md` complete and current
@@ -1410,7 +1410,7 @@ failure rather than an application one — which is still exactly why this stage
 - [ ] Demo scenario 7: upload a file with unfamiliar headers, map the columns live, ingest ⭐
 - [ ] Demo scenario 8: organization match — different field set, different model, same workflow ⭐
 - [ ] Demo timed end to end, under 10 minutes
-- [ ] `make demo` resets and seeds the demo state in one command ⭐
+- [x] `make demo` resets and seeds the demo state in one command ⭐ — `scripts/demo.py`: empty, seed at a fixed seed, load, fit, two users, a run, a second config whose accept threshold is lower, a second run to diff it against, and the unfamiliar-header workbook for the column-mapping screen. Every id it produces is printed and written to `.run/demo.json`, so the walkthrough never has to hunt for a run id in the UI. `KEEP=1` reuses the loaded dataset. Written; not yet executed, because building it empties the database and the Lab's LLM experiment is still running against it
 
 ### CI
 
