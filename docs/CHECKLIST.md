@@ -1338,14 +1338,14 @@ failure rather than an application one — which is still exactly why this stage
 
 ### Native launch — what `docker compose up` used to do ⭐
 
-- [ ] `make up` starts api, worker and web as child processes from one terminal ⭐ — the single documented way to run the system
-- [ ] Ctrl-C on `make up` stops all three cleanly, leaving no orphan process ⭐ — the equivalent of `docker compose down`
-- [ ] Startup preflight runs before anything is spawned ⭐ — database reachable, migrations current, required `.env` keys present, ports free. Fail loudly and name the problem, rather than spawning three processes that each fail separately
-- [ ] `make up` runs `alembic upgrade head` before starting api and worker ⭐ — this is the resolution of the old "migrations on startup, or one-shot service" question
-- [ ] api and worker are the same entrypoint module with different arguments ⭐ — preserves the property the shared image was there to demonstrate
-- [ ] Interleaved log output from the three processes is readable and labelled by source
-- [ ] `make logs` / `make ps` either work natively or are removed rather than left as stubs that lie
-- [ ] `make down` stops a detached `make up`
+- [x] `make up` starts api, worker and web as child processes from one terminal ⭐ — the single documented way to run the system. `scripts/supervise.py`, driven by `tasks.py up`; `DETACH=1` runs the same supervisor in the background
+- [x] Ctrl-C on `make up` stops all three cleanly, leaving no orphan process ⭐ — the equivalent of `docker compose down`. Proved by sending `CTRL_BREAK_EVENT` to a real start: the supervisor exited 0, all three recorded pids were gone, ports 8000 and 5173 were free, and the pidfile was removed. The children are killed by tree (`taskkill /T`), because npm on Windows is a `cmd.exe` shim whose `node` grandchild otherwise survives and keeps the port
+- [x] Startup preflight runs before anything is spawned ⭐ — database reachable, migrations current, required `.env` keys present, ports free. `concordance preflight`, in `ops/preflight.py`, with 14 tests. Every failure carries a hint saying what to do, and a failed environment check short-circuits the two checks that depend on it so one cause is not reported as three problems. It found two real faults on its first run: `JWT_SECRET` was missing from the development `.env` (the tests inject their own, so nothing had ever noticed), and a leftover Vite bound to `::1` slipped past an IPv4-only port probe — now both loopback families are probed
+- [x] `make up` runs `alembic upgrade head` before starting api and worker ⭐ — this is the resolution of the old "migrations on startup, or one-shot service" question: one process runs them, before any process that needs them exists
+- [x] api and worker are the same entrypoint module with different arguments ⭐ — preserves the property the shared image was there to demonstrate. `concordance.cli api serve` and `concordance.cli jobs worker`: one package, one settings object, one logging setup
+- [x] Interleaved log output from the three processes is readable and labelled by source — one reader thread per child feeding one printer, each line prefixed with the source name in its own colour. Colour is dropped when the output is redirected, and stdout is reconfigured to replace unencodable characters: Vite's banner arrow (U+279C) is unencodable on a cp1252 console, and relaying a child's output must never be able to kill the relay
+- [x] `make logs` / `make ps` either work natively or are removed rather than left as stubs that lie — both are real. `ps` prints the recorded pids and URLs, `logs` tails a detached start's log and says so plainly when the start was in the foreground instead
+- [x] `make down` stops a detached `make up` — by the pids in `.run/up.json`, supervisor and children alike, each as a tree. Verified against a live detached start: four trees stopped, no listener left on either port
 - [ ] `make clean` truncates the Neon schema, prompting for confirmation first ⭐ — replaces "drops volumes"
 - [ ] `make up` documented in the README as the one command, with its native prerequisites stated
 

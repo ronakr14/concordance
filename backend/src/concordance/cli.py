@@ -1579,6 +1579,53 @@ def assistant_schema() -> None:
     typer.echo(schema_prompt())
 
 
+# --------------------------------------------------------------------------
+# ops - Stage 10
+# --------------------------------------------------------------------------
+
+
+@app.command("preflight")
+def preflight(
+    ports: Annotated[
+        str | None,
+        typer.Option("--ports", help="Ports that must be free, as `name:port` pairs."),
+    ] = None,
+    frontend: Annotated[
+        Path | None, typer.Option("--frontend", help="Frontend directory to check `npm ci` in.")
+    ] = None,
+) -> None:
+    """Refuse to start a system that cannot work: env, database, migrations, ports.
+
+    `make up` runs this before it spawns anything. It is also worth running on
+    its own after editing `.env`, which is why it is a command and not a
+    private step inside the launcher.
+    """
+    from concordance.ops.preflight import run_preflight
+
+    settings, _ = start(None, echo_config=False)
+    parsed: list[tuple[str, int]] = []
+    for pair in (ports or "").split(","):
+        if not pair.strip():
+            continue
+        name, _, port = pair.partition(":")
+        if not port.isdigit():
+            typer.secho(f"--ports wants `name:port` pairs, got {pair!r}", fg="red")
+            raise typer.Exit(code=2)
+        parsed.append((name.strip(), int(port)))
+
+    report = run_preflight(settings, ports=parsed, frontend=frontend)
+    for check in report.checks:
+        typer.secho(check.line(), fg="green" if check.ok else "red")
+    if report.ok:
+        typer.secho("preflight passed", fg="green")
+        return
+    typer.echo("")
+    for check in report.failures:
+        if check.hint:
+            typer.secho(f"  {check.name}: {check.hint}", fg="yellow")
+    raise typer.Exit(code=1)
+
+
 def main() -> None:
     app()
 

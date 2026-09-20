@@ -14,6 +14,7 @@ wherever make is available.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -26,11 +27,9 @@ BACKEND = ROOT / "backend"
 VENV_PY = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 PY = str(VENV_PY if VENV_PY.exists() else Path(sys.executable))
 
-# Stage at which each not-yet-built target becomes real.
-DEFERRED = {
-    "up": (10, "Docker packaging"),
-    "down": (10, "Docker packaging"),
-}
+# Stage at which each not-yet-built target becomes real. Empty now: `up` and
+# `down` were the last two, and Stage 10 made them real.
+DEFERRED: dict[str, tuple[int, str]] = {}
 FRONTEND = ROOT / "frontend"
 NPM = "npm.cmd" if os.name == "nt" else "npm"
 
@@ -205,6 +204,51 @@ def typecheck(args: list[str]) -> int:
     return _run(PY, "-m", "mypy", cwd=BACKEND)
 
 
+def up(args: list[str]) -> int:
+    """Start api, worker and web together. See `scripts/supervise.py`."""
+    v = _vars(args)
+    argv = [PY, str(ROOT / "scripts" / "supervise.py")]
+    detach = v.get("DETACH", "").lower() in {"1", "true", "yes"}
+    argv += ["detached" if detach else "serve"]
+    argv += ["--port", v.get("PORT", "8000"), "--web-port", v.get("WEB_PORT", "5173")]
+    return _run(*argv)
+
+
+def down(args: list[str]) -> int:
+    return _run(PY, str(ROOT / "scripts" / "supervise.py"), "down")
+
+
+def ps(args: list[str]) -> int:
+    return _run(PY, str(ROOT / "scripts" / "supervise.py"), "status")
+
+
+def logs(args: list[str]) -> int:
+    """Tail a detached start's log. A foreground start already prints to its terminal."""
+    log = ROOT / ".run" / "up.log"
+    if not log.is_file():
+        print(f"no {log} - `up` in the foreground prints to its own terminal")
+        return 1
+    # `errors="replace"` on the way out as well as in: the log holds whatever
+    # Vite drew, and a console that cannot encode it should print a placeholder
+    # rather than raise halfway through the tail.
+    out = sys.stdout
+    with contextlib.suppress(AttributeError, OSError, ValueError):
+        out.reconfigure(encoding="utf-8", errors="replace")
+    with log.open(encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            print(line.rstrip())
+    return 0
+
+
+def preflight(args: list[str]) -> int:
+    v = _vars(args)
+    return _run(
+        PY, "-m", "concordance.cli", "preflight",
+        "--ports", f"api:{v.get('PORT', '8000')},web:{v.get('WEB_PORT', '5173')}",
+        "--frontend", str(FRONTEND),
+    )
+
+
 def clean(args: list[str]) -> int:
     for pattern in ("__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"):
         for p in ROOT.rglob(pattern):
@@ -237,6 +281,11 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "fmt": fmt,
     "typecheck": typecheck,
     "clean": clean,
+    "up": up,
+    "down": down,
+    "ps": ps,
+    "logs": logs,
+    "preflight": preflight,
 }
 
 

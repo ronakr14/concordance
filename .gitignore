@@ -17,3 +17,5 @@ reports/
 htmlcov/
 # Playwright: reports/ holds the rest
 frontend/test-results/
+# Pids and logs from `make up`.
+.run/
