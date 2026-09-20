@@ -1534,6 +1534,156 @@
         "title": "ConfigActivationOut",
         "type": "object"
       },
+      "DiffChangeOut": {
+        "additionalProperties": false,
+        "description": "One record the two runs answered differently.",
+        "properties": {
+          "confidence_after": {
+            "title": "Confidence After",
+            "type": "number"
+          },
+          "confidence_before": {
+            "title": "Confidence Before",
+            "type": "number"
+          },
+          "confidence_delta": {
+            "title": "Confidence Delta",
+            "type": "number"
+          },
+          "decision_after": {
+            "title": "Decision After",
+            "type": "string"
+          },
+          "decision_before": {
+            "title": "Decision Before",
+            "type": "string"
+          },
+          "provider_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider After"
+          },
+          "provider_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Before"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "result_after": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The later run's result, to open its evidence.",
+            "title": "Result After"
+          },
+          "result_before": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Before"
+          },
+          "route_after": {
+            "title": "Route After",
+            "type": "string"
+          },
+          "route_before": {
+            "title": "Route Before",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "decision_before",
+          "decision_after",
+          "provider_before",
+          "provider_after",
+          "confidence_before",
+          "confidence_after",
+          "confidence_delta",
+          "route_before",
+          "route_after"
+        ],
+        "title": "DiffChangeOut",
+        "type": "object"
+      },
+      "DiffCountsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "changed_confidence": {
+            "title": "Changed Confidence",
+            "type": "integer"
+          },
+          "changed_decision": {
+            "title": "Changed Decision",
+            "type": "integer"
+          },
+          "new": {
+            "title": "New",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unchanged",
+          "changed_decision",
+          "changed_confidence",
+          "new",
+          "removed"
+        ],
+        "title": "DiffCountsOut",
+        "type": "object"
+      },
+      "DiffFieldOut": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After"
+          },
+          "before": {
+            "title": "Before"
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "title": "DiffFieldOut",
+        "type": "object"
+      },
       "ErrorBodyOut": {
         "additionalProperties": false,
         "properties": {
@@ -5116,6 +5266,81 @@
         "title": "RowIssueOut",
         "type": "object"
       },
+      "RunDiffOut": {
+        "additionalProperties": false,
+        "description": "What changed between two runs, and the provenance delta that explains it.",
+        "properties": {
+          "changed_confidence": {
+            "items": {
+              "$ref": "#/components/schemas/DiffChangeOut"
+            },
+            "title": "Changed Confidence",
+            "type": "array"
+          },
+          "changed_decision": {
+            "items": {
+              "$ref": "#/components/schemas/DiffChangeOut"
+            },
+            "title": "Changed Decision",
+            "type": "array"
+          },
+          "confidence_threshold": {
+            "title": "Confidence Threshold",
+            "type": "number"
+          },
+          "config_delta": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DiffFieldOut"
+            },
+            "description": "Provenance that differs: config version, thresholds, engine, strategy, snapshots.",
+            "title": "Config Delta",
+            "type": "object"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/DiffCountsOut"
+          },
+          "new": {
+            "description": "Record keys the later run decided and the earlier one did not.",
+            "items": {
+              "type": "string"
+            },
+            "title": "New",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "run_a": {
+            "$ref": "#/components/schemas/RunOut"
+          },
+          "run_b": {
+            "$ref": "#/components/schemas/RunOut"
+          },
+          "truncated": {
+            "description": "Whether either list was cut to `limit`.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "run_a",
+          "run_b",
+          "confidence_threshold",
+          "counts",
+          "config_delta",
+          "changed_decision",
+          "changed_confidence",
+          "new",
+          "removed",
+          "truncated"
+        ],
+        "title": "RunDiffOut",
+        "type": "object"
+      },
       "RunIn": {
         "additionalProperties": false,
         "properties": {
@@ -8468,6 +8693,100 @@
         "summary": "Get Provider",
         "tags": [
           "providers"
+        ]
+      }
+    },
+    "/reconciliation/diff": {
+      "get": {
+        "description": "What two runs decided differently, and the config delta that explains it.\n\nComputed on demand rather than stored: it is two indexed reads and a walk\nover the smaller run, and a stored diff would go stale the moment either\nrun was superseded.",
+        "operationId": "diff_reconciliation_diff_get",
+        "parameters": [
+          {
+            "description": "The earlier run.",
+            "in": "query",
+            "name": "a",
+            "required": true,
+            "schema": {
+              "description": "The earlier run.",
+              "format": "uuid",
+              "title": "A",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The later run.",
+            "in": "query",
+            "name": "b",
+            "required": true,
+            "schema": {
+              "description": "The later run.",
+              "format": "uuid",
+              "title": "B",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Report confidence moves above this. Omitted: 0.05.",
+            "in": "query",
+            "name": "confidence_delta",
+            "required": false,
+            "schema": {
+              "default": 0.05,
+              "description": "Report confidence moves above this. Omitted: 0.05.",
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "title": "Confidence Delta",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Rows per list.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "description": "Rows per list.",
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDiffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Either run is unknown."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Diff",
+        "tags": [
+          "reconciliation"
         ]
       }
     },

@@ -41,6 +41,8 @@ export type ColumnMapping = S["ColumnMappingOut"];
 export type Facets = S["FacetsOut"];
 
 export type Run = S["RunOut"];
+export type RunDiff = S["RunDiffOut"];
+export type DiffChange = S["DiffChangeOut"];
 
 export type LabResults = S["LabResultsOut"];
 export type LabRun = S["LabRunOut"];

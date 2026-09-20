@@ -566,6 +566,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reconciliation/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff
+         * @description What two runs decided differently, and the config delta that explains it.
+         *
+         *     Computed on demand rather than stored: it is two indexed reads and a walk
+         *     over the smaller run, and a stored diff would go stale the moment either
+         *     run was superseded.
+         */
+        get: operations["diff_reconciliation_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/reconciliation/run": {
         parameters: {
             query?: never;
@@ -1513,6 +1537,59 @@ export interface components {
             scoring_config_id: string;
             /** Version */
             version: string;
+        };
+        /**
+         * DiffChangeOut
+         * @description One record the two runs answered differently.
+         */
+        DiffChangeOut: {
+            /** Confidence After */
+            confidence_after: number;
+            /** Confidence Before */
+            confidence_before: number;
+            /** Confidence Delta */
+            confidence_delta: number;
+            /** Decision After */
+            decision_after: string;
+            /** Decision Before */
+            decision_before: string;
+            /** Provider After */
+            provider_after: string | null;
+            /** Provider Before */
+            provider_before: string | null;
+            /** Record Id */
+            record_id: string;
+            /**
+             * Result After
+             * @description The later run's result, to open its evidence.
+             */
+            result_after?: string | null;
+            /** Result Before */
+            result_before?: string | null;
+            /** Route After */
+            route_after: string;
+            /** Route Before */
+            route_before: string;
+        };
+        /** DiffCountsOut */
+        DiffCountsOut: {
+            /** Changed Confidence */
+            changed_confidence: number;
+            /** Changed Decision */
+            changed_decision: number;
+            /** New */
+            new: number;
+            /** Removed */
+            removed: number;
+            /** Unchanged */
+            unchanged: number;
+        };
+        /** DiffFieldOut */
+        DiffFieldOut: {
+            /** After */
+            after: unknown;
+            /** Before */
+            before: unknown;
         };
         /** ErrorBodyOut */
         ErrorBodyOut: {
@@ -2637,6 +2714,40 @@ export interface components {
             reason: string;
             /** Row */
             row: number;
+        };
+        /**
+         * RunDiffOut
+         * @description What changed between two runs, and the provenance delta that explains it.
+         */
+        RunDiffOut: {
+            /** Changed Confidence */
+            changed_confidence: components["schemas"]["DiffChangeOut"][];
+            /** Changed Decision */
+            changed_decision: components["schemas"]["DiffChangeOut"][];
+            /** Confidence Threshold */
+            confidence_threshold: number;
+            /**
+             * Config Delta
+             * @description Provenance that differs: config version, thresholds, engine, strategy, snapshots.
+             */
+            config_delta: {
+                [key: string]: components["schemas"]["DiffFieldOut"];
+            };
+            counts: components["schemas"]["DiffCountsOut"];
+            /**
+             * New
+             * @description Record keys the later run decided and the earlier one did not.
+             */
+            new: string[];
+            /** Removed */
+            removed: string[];
+            run_a: components["schemas"]["RunOut"];
+            run_b: components["schemas"]["RunOut"];
+            /**
+             * Truncated
+             * @description Whether either list was cut to `limit`.
+             */
+            truncated: boolean;
         };
         /** RunIn */
         RunIn: {
@@ -4035,6 +4146,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProviderDetailOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_reconciliation_diff_get: {
+        parameters: {
+            query: {
+                /** @description The earlier run. */
+                a: string;
+                /** @description The later run. */
+                b: string;
+                /** @description Report confidence moves above this. Omitted: 0.05. */
+                confidence_delta?: number;
+                /** @description Rows per list. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDiffOut"];
+                };
+            };
+            /** @description Either run is unknown. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

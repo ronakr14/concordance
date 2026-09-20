@@ -47,6 +47,8 @@ class Decided:
     provider_id: str | None
     confidence: float
     route: str
+    #: The result row, so a caller can open the evidence behind this answer.
+    result_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -78,6 +80,8 @@ class ChangedRecord:
             "confidence_delta": round(self.confidence_delta, 6),
             "route_before": self.before.route,
             "route_after": self.after.route,
+            "result_before": str(self.before.result_id) if self.before.result_id else None,
+            "result_after": str(self.after.result_id) if self.after.result_id else None,
         }
 
 
@@ -208,6 +212,7 @@ def _decisions(session: Session, run_id: uuid.UUID) -> dict[str, Decided]:
             MatchResult.chosen_provider_id,
             MatchResult.calibrated_confidence,
             MatchResult.route,
+            MatchResult.id,
         )
         .join(MatchResult, MatchResult.sanction_record_id == SanctionRecordRow.id)
         .where(MatchResult.run_id == run_id)
@@ -219,8 +224,9 @@ def _decisions(session: Session, run_id: uuid.UUID) -> dict[str, Decided]:
             provider_id=provider_id,
             confidence=float(confidence or 0.0),
             route=route,
+            result_id=result_id,
         )
-        for record_id, decision, provider_id, confidence, route in rows
+        for record_id, decision, provider_id, confidence, route, result_id in rows
     }
 
 

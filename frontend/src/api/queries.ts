@@ -253,6 +253,19 @@ export const useRuns = (fileId?: string) =>
     refetchInterval: (query) => (query.state.data?.items.some((r) => LIVE.has(r.status)) ? 2000 : false),
   });
 
+/** What two runs decided differently. Only fetched once both are picked. */
+export const useRunDiff = (a: string | null, b: string | null, confidenceDelta: number) =>
+  useQuery({
+    queryKey: [...keys.runs, "diff", a, b, confidenceDelta],
+    queryFn: () =>
+      unwrap(
+        api.GET("/reconciliation/diff", {
+          params: { query: { a: a as string, b: b as string, confidence_delta: confidenceDelta } },
+        }),
+      ),
+    enabled: Boolean(a && b && a !== b),
+  });
+
 export function useStartRun() {
   const client = useQueryClient();
   return useMutation({

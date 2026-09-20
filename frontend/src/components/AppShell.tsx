@@ -11,6 +11,7 @@ import {
   Briefcase,
   FlaskConical,
   GitBranch,
+  GitCompare,
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
@@ -28,6 +29,7 @@ const NAV = [
   { to: "/cases", label: "Cases", icon: Briefcase },
   { to: "/lab", label: "Lab", icon: FlaskConical },
   { to: "/models", label: "Models", icon: GitBranch },
+  { to: "/compare", label: "Compare", icon: GitCompare },
   { to: "/audit", label: "Audit", icon: ScrollText, adminOnly: true },
 ] as const;
 

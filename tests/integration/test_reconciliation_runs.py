@@ -390,6 +390,35 @@ def test_diff_names_the_config_change_that_moved_the_decisions(scenario: Fixture
 # --------------------------------------------------------------------------
 
 
+def test_the_diff_endpoint_serves_what_the_comparison_page_draws(scenario: Fixture) -> None:
+    from concordance.api.routers.reconciliation import diff
+    from concordance.db.session import session_scope
+
+    with session_scope(scenario.settings) as session:
+        out = diff(  # type: ignore[arg-type]
+            session=session, _user=None, a=scenario.run_a, b=scenario.run_b, limit=50
+        )
+    assert out.run_a.id == scenario.run_a and out.run_b.id == scenario.run_b
+    assert out.counts.changed_decision > 0, "the strict config decided nothing differently"
+    assert "scoring_config" in " ".join(out.config_delta), out.config_delta
+    change = out.changed_decision[0]
+    assert change.decision_before != change.decision_after or change.provider_before != change.provider_after
+    # The page links each changed row into the later run's evidence.
+    assert change.result_after is not None
+    assert len(out.changed_decision) <= 50
+
+
+def test_a_diff_against_an_unknown_run_is_a_404(scenario: Fixture) -> None:
+    import uuid as _uuid
+
+    from concordance.api.errors import NotFoundError
+    from concordance.api.routers.reconciliation import diff
+    from concordance.db.session import session_scope
+
+    with session_scope(scenario.settings) as session, pytest.raises(NotFoundError):
+        diff(session=session, _user=None, a=scenario.run_a, b=_uuid.uuid4())  # type: ignore[arg-type]
+
+
 def test_expiry_transitions_a_past_dated_case_and_audits_it(scenario: Fixture) -> None:
     from concordance.cases.lifecycle import expire_cases
     from concordance.db.models import Case

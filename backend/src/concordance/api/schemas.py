@@ -272,6 +272,55 @@ class RunOut(ApiModel):
     error: str | None
 
 
+class DiffCountsOut(ApiModel):
+    unchanged: int
+    changed_decision: int
+    changed_confidence: int
+    new: int
+    removed: int
+
+
+class DiffChangeOut(ApiModel):
+    """One record the two runs answered differently."""
+
+    record_id: str
+    decision_before: str
+    decision_after: str
+    provider_before: str | None
+    provider_after: str | None
+    confidence_before: float
+    confidence_after: float
+    confidence_delta: float
+    route_before: str
+    route_after: str
+    result_before: uuid.UUID | None = None
+    result_after: uuid.UUID | None = Field(
+        default=None, description="The later run's result, to open its evidence."
+    )
+
+
+class DiffFieldOut(ApiModel):
+    before: Any
+    after: Any
+
+
+class RunDiffOut(ApiModel):
+    """What changed between two runs, and the provenance delta that explains it."""
+
+    run_a: RunOut
+    run_b: RunOut
+    confidence_threshold: float
+    counts: DiffCountsOut
+    config_delta: dict[str, DiffFieldOut] = Field(
+        description="Provenance that differs: config version, thresholds, engine, strategy, snapshots."
+    )
+    changed_decision: list[DiffChangeOut]
+    changed_confidence: list[DiffChangeOut]
+    new: list[str] = Field(description="Record keys the later run decided and the earlier one did not.")
+    removed: list[str]
+    truncated: bool = Field(description="Whether either list was cut to `limit`.")
+
+
 # --------------------------------------------------------------------------
 # matches
 # --------------------------------------------------------------------------

@@ -1270,11 +1270,12 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ### Run comparison UI ⭐
 
-- [ ] Run picker for two runs
-- [ ] Summary: unchanged, changed, new, removed counts
-- [ ] Config delta panel explaining what differs between the runs ⭐
-- [ ] Changed-decision table: old vs new decision and confidence
-- [ ] Drill into any changed record's Investigation view
+- [x] Run picker for two runs — the two newest by default, each labelled with its config version and size; the pair lives in the URL
+- [x] Summary: unchanged, changed, new, removed counts — plus confidence moves beyond a threshold the page sets (1%, 5%, 10%, 25%)
+- [x] Config delta panel explaining what differs between the runs ⭐ — config version, both thresholds, engine, strategy, prompt and the two snapshot hashes, each as `before → after`. When nothing differs it says so, and says that any difference below would then be the engine being non-deterministic
+- [x] Changed-decision table: old vs new decision and confidence
+- [x] Drill into any changed record's Investigation view — the row links to the later run's result
+- [x] `GET /reconciliation/diff` serves it, computed on demand — two indexed reads; a stored diff would go stale the moment either run was superseded
 
 ### AI Assistant ⭐
 
@@ -1305,7 +1306,7 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 - [ ] LLM cost-versus-baseline panel shows a real saving ⭐
 - [x] `concordance retune` produces a new config version with improved holdout precision ⭐ — on clean labels, holdout recall 0.882 → 0.922 and review load 14.0% → 10.5% at 200 labels, precision held; the new version is written inactive with both configs' numbers on it
 - [x] Precision-per-round chart shows movement across at least three simulated review rounds — five rounds, F1 0.906 → 0.931 → 0.945 → 0.947 with the grey band 20.9% → 14.0%, then the gate stops it changing. With 3% reviewer error the gate refuses every round and the curve stays flat at 0.906 — the honest result, and the reason the gate exists
-- [ ] Run comparison shows a real diff between two configs
+- [x] Run comparison shows a real diff between two configs — proved end to end by `frontend/e2e/compare.spec.ts` and `tests/integration/test_reconciliation_runs.py`, on two runs of the same records under configs whose accept thresholds differ
 - [ ] Every adversarial assistant prompt in the test suite is rejected ⭐
 - [ ] Assistant answers at least ten realistic analyst questions correctly
 

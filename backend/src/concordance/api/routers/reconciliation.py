@@ -1,4 +1,4 @@
-"""`/reconciliation` - start a run, watch it, cancel it.
+"""`/reconciliation` - start a run, watch it, cancel it, and compare two.
 
 `POST /reconciliation/run` returns `202 Accepted` with the run in `QUEUED` and
 does no matching itself: the worker does, in its own process. The client polls
@@ -17,6 +17,7 @@ from concordance.api.deps import ActorDep, CurrentUser, SessionDep
 from concordance.api.errors import NotFoundError
 from concordance.api.routers.common import Limit, Offset, page_of
 from concordance.db.repositories.matches import MatchRepository
+from concordance.jobs.diff import DEFAULT_CONFIDENCE_DELTA, diff_runs
 from concordance.jobs.runs import cancel_run, start_run
 
 router = APIRouter(prefix="/reconciliation", tags=["reconciliation"])
@@ -57,6 +58,62 @@ def list_runs(
         status=status_, file_id=file_id, limit=limit, offset=offset
     )
     return page_of(schemas.RunOut, page)
+
+
+@router.get(
+    "/diff",
+    response_model=schemas.RunDiffOut,
+    responses={404: {"description": "Either run is unknown."}},
+)
+def diff(
+    session: SessionDep,
+    _user: CurrentUser,
+    a: Annotated[uuid.UUID, Query(description="The earlier run.")],
+    b: Annotated[uuid.UUID, Query(description="The later run.")],
+    confidence_delta: Annotated[
+        float,
+        Query(ge=0.0, le=1.0, description="Report confidence moves above this. Omitted: 0.05."),
+    ] = DEFAULT_CONFIDENCE_DELTA,
+    limit: Annotated[int, Query(ge=1, le=2_000, description="Rows per list.")] = 200,
+) -> schemas.RunDiffOut:
+    """What two runs decided differently, and the config delta that explains it.
+
+    Computed on demand rather than stored: it is two indexed reads and a walk
+    over the smaller run, and a stored diff would go stale the moment either
+    run was superseded.
+    """
+    repo = MatchRepository(session)
+    first, second = repo.get_run(a), repo.get_run(b)
+    if first is None:
+        raise NotFoundError(f"no run {a}")
+    if second is None:
+        raise NotFoundError(f"no run {b}")
+    report = diff_runs(session, a, b, confidence_delta=confidence_delta)
+    payload = report.as_dict(detail=limit)
+    counts = payload["counts"]
+    truncated = any(
+        counts[key] > limit
+        for key in ("changed_decision", "changed_confidence", "new", "removed")
+    )
+    return schemas.RunDiffOut(
+        run_a=schemas.RunOut.model_validate(first),
+        run_b=schemas.RunOut.model_validate(second),
+        confidence_threshold=payload["confidence_threshold"],
+        counts=schemas.DiffCountsOut.model_validate(counts),
+        config_delta={
+            name: schemas.DiffFieldOut.model_validate(value)
+            for name, value in payload["config_delta"].items()
+        },
+        changed_decision=[
+            schemas.DiffChangeOut.model_validate(c) for c in payload["changed_decision"]
+        ],
+        changed_confidence=[
+            schemas.DiffChangeOut.model_validate(c) for c in payload["changed_confidence"]
+        ],
+        new=payload["new"],
+        removed=payload["removed"],
+        truncated=truncated,
+    )
 
 
 @router.get("/runs/{run_id}", response_model=schemas.RunOut)
