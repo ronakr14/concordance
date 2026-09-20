@@ -11,7 +11,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `8 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10) · a portfolio artifact exists from the end of Stage 3.
+Progress: `9 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10; GATE 9's LLM cost panel waits on a free-tier rerun) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
