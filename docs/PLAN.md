@@ -89,8 +89,8 @@ the exact data-quality level at which it stops working.*
 | AI Assistant | Yes — constrained NL→SQL with a parser-level guard |
 | Budget | Full-time sprint, 1–2 weeks |
 | LLM providers | OpenRouter + Groq free tiers in dev, behind an in-house router |
-| Build order | **Local-first.** Postgres arrives at Stage 5, Docker at Stage 10. See §4 |
-| Deployment | `docker compose up` brings up the whole stack — a Stage 10 deliverable, not a dev dependency |
+| Build order | **Local-first.** Postgres arrives at Stage 5, as a hosted Neon instance. See §4 |
+| Deployment | **Native.** `make up` brings up api, worker and web from one terminal. Containerization was cut on 2026-09-20 — see §4 |
 
 ### Scope warning
 
@@ -103,7 +103,7 @@ system; everything below is upside. Do not start below the line.
 
 ## 4. Build order: local-first, infrastructure last
 
-**Docker and Postgres are deferred.** The first five stages need neither.
+**Postgres is deferred, and Docker is gone.** The first five stages need neither.
 
 This is not a compromise, it is the better order. The matching engine — normalization,
 NPI validation, blocking, comparison vectors, the EM fit, calibration, evaluation — is
@@ -115,8 +115,8 @@ in-process means:
 - **The Stage 3 sweep is actually feasible.** Ten corruption levels × four strategies is
   forty full reconciliation passes. In-memory that is minutes; forty round-tripping
   database runs is an afternoon each time you change a weight.
-- **Tests stay fast.** Pure functions over fixtures, no container to start, no migration
-  to run, no test database to reset.
+- **Tests stay fast.** Pure functions over fixtures, no migration to run, no test
+  database to reset.
 - **A shippable portfolio artifact exists after Stage 3** — a CLI plus an evaluation
   report with the calibration and robustness charts. Everything after that is the
   application wrapped around an engine that already works.
@@ -162,19 +162,22 @@ in Stage 5, one `ResponseCache` protocol.
 | 8 React application | Postgres |
 | — CUT LINE — | |
 | 9 Lab, feedback loop, assistant | Postgres |
-| 10 Hardening, **Docker packaging**, docs, demo | **Docker install** |
+| 10 Hardening, **native packaging**, docs, demo | Nothing new |
 
 ### Prerequisites, by the stage that first needs them
 
 1. **Python 3.12 — before Stage 0.** The system Python here is 3.14.4, too new; several
    wheels in this stack lag major releases. Use a 3.12 venv.
 2. **OpenRouter and Groq API keys — before Stage 4.**
-3. **Postgres 16 — before Stage 5.** Native Windows install (EDB installer). `pg_trgm`
-   ships with it. The design depends on Postgres specifically — trigram GIN indexes,
-   JSONB, `SELECT … FOR UPDATE SKIP LOCKED`, `REVOKE` on `audit_logs`, and a read-only
-   role for the assistant. SQLite cannot substitute; do not try.
-4. **Docker — before Stage 10.** Packaging only. The compose file is a deliverable, not
-   a development dependency. Everything runs natively until then.
+3. **Postgres — before Stage 5.** Satisfied by a **hosted Neon instance** (17.11 in
+   practice), not a local install: a connection string beats running a database service
+   on the development machine. The design depends on Postgres specifically — trigram GIN
+   indexes, JSONB, `SELECT … FOR UPDATE SKIP LOCKED`, `REVOKE` on `audit_logs`, and a
+   read-only role for the assistant. SQLite cannot substitute; do not try. The cost of
+   hosting is latency: every timing in this project crosses a WAN link.
+4. **Nothing before Stage 10.** This entry used to read "Docker — before Stage 10".
+   Docker cannot be installed on this machine, so containerization was cut rather than
+   written unverified; Stage 10 packages the application natively. See §4.
 
 ---
 
@@ -225,8 +228,10 @@ no container — the engine runs in-process against Parquet files, driven by the
 - **No Redis, no Celery.** The job queue is a Postgres table drained with
   `SELECT ... FOR UPDATE SKIP LOCKED`. One fewer service, transactional with the data it
   operates on, and a better interview answer than "I added Celery."
-- **The worker is a separate container, same image.** Different entrypoint. Reconciliation
-  over 50k×5k must never block an HTTP request.
+- **The worker is a separate process, same entrypoint module.** Different arguments.
+  Reconciliation over 50k×5k must never block an HTTP request. This was to be a separate
+  container off a shared image; with containerization cut, the property that mattered —
+  one codebase, two roles — is preserved by the shared entrypoint instead.
 - **Storage and blocking sit behind protocols** (see §4). File-backed first, Postgres
   later, engine unchanged.
 - **LLM calls are cached in Postgres**, keyed by `sha256(model + prompt_version + rendered_prompt)`.
@@ -238,10 +243,9 @@ no container — the engine runs in-process against Parquet files, driven by the
 
 ```
 concordance/
-├─ docker-compose.yml            # postgres, api, worker, web
-├─ docker-compose.dev.yml        # hot reload overrides
 ├─ .env.example
 ├─ Makefile                      # up, down, seed, eval, migrate, test, lint
+├─ tasks.py                      # the real runner; `make up` spawns api + worker + web
 ├─ docs/
 │  ├─ PLAN.md                    # this file
 │  ├─ data_dictionary.md
@@ -251,7 +255,6 @@ concordance/
 │  └─ demo_script.md
 ├─ backend/
 │  ├─ pyproject.toml
-│  ├─ Dockerfile
 │  ├─ alembic/
 │  └─ src/concordance/
 │     ├─ config.py               # pydantic-settings
@@ -282,7 +285,6 @@ concordance/
 │     ├─ synth/                  # generator + corruption engine
 │     └─ cli.py                  # typer: seed, reconcile, eval, sweep, replay
 ├─ frontend/
-│  ├─ Dockerfile                 # build → nginx
 │  ├─ vite.config.ts
 │  └─ src/
 │     ├─ api/                    # typed client generated from OpenAPI
@@ -489,8 +491,8 @@ curve the Lab page renders.
 Each stage ends in something runnable, committable and demoable. Do not start a stage
 before the previous one's acceptance check passes.
 
-Stages 0–4 need no database and no container. Postgres arrives at Stage 5, Docker at
-Stage 10. See §4 for why.
+Stages 0–4 need no database. Postgres arrives at Stage 5, as a hosted Neon instance, and
+nothing in this plan is containerized. See §4 for both.
 
 ### Stage 0 — Local scaffolding · ~4h
 Repo scaffolded, git init, Python 3.12 venv. `pyproject.toml`, ruff + mypy + pytest
@@ -501,7 +503,7 @@ CLI directly, no containers.
 **Accept:** `make test` green on an empty suite; `make lint` and `make typecheck` pass;
 `concordance --help` lists the command groups.
 
-*No Docker, no compose, no Alembic, no `/health` — those belong to Stages 5 and 10.*
+*No Alembic, no `/health` — those belong to Stages 5 and 7.*
 
 ### Stage 1 — Synthetic data + ground truth · ~10h
 Generator producing 50k providers with realistic name/DOB/address/license/specialty
@@ -648,18 +650,28 @@ role-aware UI.
   whitelist; enforce `LIMIT`; statement timeout. Show the generated SQL with every
   answer. The guard is the feature — write it up.
 
-### Stage 10 — Packaging, hardening, docs, demo · ~12h
-**Docker Desktop installed.** `backend/Dockerfile`, `frontend/Dockerfile` +
-`nginx.conf`, `docker-compose.yml` (postgres, api, worker, web) and a dev override.
-This is the first time containers appear, and by now the application is known-good
-natively, so a container problem is unambiguously a container problem.
+### Stage 10 — Packaging, hardening, docs, demo · ~10h
+**No new prerequisite.** This stage used to open with "Docker Desktop installed" and
+deliver two Dockerfiles, an nginx config and a compose file. Containerization was cut on
+2026-09-20 because Docker cannot be installed here, and writing container artifacts that
+have never been run would have been worse than shipping none — a reviewer's first move
+with a `docker-compose.yml` is to run it.
+
+Packaging is therefore native. `make up` starts api, worker and web as child processes
+from one terminal, after a preflight that checks the database is reachable, migrations
+are current, required `.env` keys are present and the ports are free — then runs
+`alembic upgrade head`. Ctrl-C stops all three without orphans. api and worker are the
+same entrypoint module with different arguments, which preserves what the shared image
+was there to show.
 
 Test coverage pass (target ≥80% on `matching/` and `api/`). Security pass: secret scan
 over history, dependency audit, SQL injection review, verify the read-only role and the
 `audit_logs` revoke. Seed + demo script for the eight scenarios. README with architecture
 diagram, the calibration and robustness charts, quick start, and a short "why this is not
-just a fuzzy matcher" section. `docs/demo_script.md`. One-command cold start verified on
-a clean machine. GitHub Actions running lint + tests.
+just a fuzzy matcher" section. `docs/demo_script.md`. Cold start verified from the README
+verbatim on a clean checkout. GitHub Actions running lint, typecheck and tests, with a
+`postgres:17` service container for the integration suite — the one remaining use of a
+container, and it needs nothing installed locally.
 
 ---
 
@@ -678,10 +690,10 @@ a clean machine. GitHub Actions running lint + tests.
 | 9 | Stage 7b (matches, cases, audit, tests) | — |
 | 10 | Stage 8a (shell, dashboard, queue) | — |
 | 11 | Stage 8b (**Investigation page**, cases, audit) | — |
-| 12 | Stage 10 (Docker, hardening, README, demo) — **ship here** | **Docker install** |
+| 12 | Stage 10 (native packaging, hardening, README, demo) — **ship here** | — |
 | +1–3 | Stage 9, in order: Lab → feedback loop → assistant | — |
 
-Twelve days, not ten. The original ten assumed Docker and Postgres on day one and no
+Twelve days, not ten. The original ten assumed containers and Postgres on day one and no
 column-mapping or organization-matching work; §11 added roughly nine hours and the
 honest number moved. If the calendar is hard at ten days, ship after Day 10 with the API
 complete and the UI partial — the engine, the evaluation report and the CLI already tell
@@ -697,14 +709,14 @@ the project.
 
 | Risk | Mitigation |
 |---|---|
-| Docker deferred to Stage 10 — containerization problems surface late | Acceptable trade: by then the app is known-good natively, so a container failure is unambiguously a container failure. Keep the Dockerfiles simple and do not let Stage 10 slip off the end |
+| No containerization at all — a reviewer expecting `docker compose up` does not get it | Accepted, not mitigated: Docker cannot be installed here, and an unverified compose file is a worse artifact than none. `make up` must therefore be genuinely one command and the README must state the native prerequisites plainly, or this becomes the project's weakest first impression |
 | Parquet-phase code diverges from the Postgres phase | The §4 protocols are defined in Stage 0, before any consumer exists. The Stage 5 gate asserts both candidate generators return identical sets |
-| Postgres install slips past Stage 5 | It is a 5-minute EDB installer and it blocks Stages 5–9. Do it the evening before Day 7 |
+| Hosted Postgres means every timing crosses a WAN link | Real, and it already bit once: a mid-run dropped connection produced a silent hang. Keyset-paged reads, capped insert statements and `with_reconnect` are in place. Report throughput numbers as WAN-bound rather than as engine throughput |
 | EM converges to a degenerate solution | Smoothing, `u` floor, fixed seeds, sane init from a small labelled slice, convergence logged |
 | Free-tier LLM rate limits / flaky JSON | Cache everything, provider fallback chain, schema repair round, `AMBIGUOUS` fallback — pipeline must never hard-fail on the LLM |
 | 250M pair explosion | Blocking measured in Stage 3 before anything downstream is built |
 | React stage overruns | Build Investigation first inside Stage 8, ugly-but-working; polish last |
-| Python 3.14 wheel breakage | Pin 3.12 in the container and in the local venv |
+| Python 3.14 wheel breakage | Pin 3.12 in the local venv and in the CI matrix |
 | Scope > available hours | Cut line in §8 is explicit and pre-agreed |
 
 ---

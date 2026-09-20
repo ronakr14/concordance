@@ -4,14 +4,19 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 
 **Rules of use**
 - Work top to bottom. Do not start a stage before the previous stage's **GATE** passes.
-- Stages 0-4 need **no database and no container**. Postgres arrives at Stage 5, Docker at
-  Stage 10. See PLAN §4 for why this order is better, not merely cheaper.
+- Stages 0-4 need **no database**. Postgres arrives at Stage 5, as a hosted Neon instance.
+  See PLAN §4 for why this order is better, not merely cheaper.
+- **There is no containerization.** Docker cannot be installed on the development machine,
+  so on 2026-09-20 the Dockerfiles and compose files were cut from the plan rather than
+  written unverified. The stack runs natively and `make up` is the single documented way to
+  start it. CI is the one exception: it may use containers, because those run on GitHub's
+  runners and need nothing installed locally.
 - A gate is not "I think it works" — it is a command you run that prints a result.
 - Every `⭐` item is load-bearing for the portfolio story. Never cut one.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `9 / 11 stages complete` (GATE 7's `docker compose` item waits on Stage 10; GATE 9's LLM cost panel waits on a free-tier rerun) · a portfolio artifact exists from the end of Stage 3.
+Progress: `9 / 11 stages complete` (GATE 9's LLM cost panel waits on a free-tier rerun) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -60,11 +65,13 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 
 ### Needed before Stage 5 (Persistence) ⭐
 
-- [ ] Install PostgreSQL 16 natively on Windows (EDB installer)
-- [ ] Verify `psql --version` resolves
-- [ ] Create the `concordance` database and an application role
-- [ ] Confirm `CREATE EXTENSION pg_trgm` succeeds — trigram blocking depends on it
-- [ ] Record the connection string in `.env` (never committed)
+Resolved by **hosted Neon Postgres**, not a local install — a connection string beats
+running a database service on the development machine.
+
+- [x] Provision a hosted Postgres 16 instance (Neon) — no local install
+- [x] Create the `concordance` database and an application role
+- [x] Confirm `CREATE EXTENSION pg_trgm` succeeds — trigram blocking depends on it
+- [x] Record the connection string in `.env` (never committed)
 
 > SQLite is **not** a substitute. The design uses trigram GIN indexes, JSONB,
 > `SELECT … FOR UPDATE SKIP LOCKED`, `REVOKE` on `audit_logs`, and a read-only role for
@@ -76,10 +83,9 @@ here so nothing is forgotten, but each is due immediately before the stage that 
 
 ### Needed before Stage 10 (Packaging)
 
-- [ ] Install Docker Desktop with the WSL2 backend
-- [ ] Verify `docker --version` and `docker compose version` resolve
-- [ ] Verify `docker run --rm hello-world` succeeds
-- [ ] Confirm WSL2 memory allocation is at least 8 GB (`.wslconfig`)
+**Nothing.** This block used to require Docker Desktop and a WSL2 backend. Docker cannot
+be installed on this machine, so Stage 10 packages the application natively and has no
+prerequisite beyond what Stage 0 already installed. See the Stage 10 preamble.
 
 ### Open questions from PLAN §11 — **all resolved**
 
@@ -668,7 +674,7 @@ Stages 1–4 does not change; if it does, the seam was wrong and that is the rea
 ### Postgres setup
 
 - [x] `pip install -e .[db]` — SQLAlchemy, Alembic, psycopg now enter the project
-- [x] Database created; application role with least privilege — Neon-hosted **Postgres 17.11** (no admin rights on this machine, so no local install; PLAN's "16" is superseded and Stage 10's compose must pin 17 to match). `neondb_owner` owns the schema and runs migrations; `concordance_app` is the least-privilege role the application connects as, and the two must stay distinct or the audit-log revoke cannot bite
+- [x] Database created; application role with least privilege — Neon-hosted **Postgres 17.11** (no admin rights on this machine, so no local install; PLAN's "16" is superseded; CI's service container must pin 17 to match). `neondb_owner` owns the schema and runs migrations; `concordance_app` is the least-privilege role the application connects as, and the two must stay distinct or the audit-log revoke cannot bite
 - [x] `CREATE EXTENSION IF NOT EXISTS pg_trgm` in the first migration, before the GIN index ⭐
 - [x] `DATABASE_URL` in `.env`, never committed
 
@@ -793,7 +799,7 @@ Stages 1–4 does not change; if it does, the seam was wrong and that is the rea
 - [x] Bulk insert via `COPY`, not row-by-row ORM inserts
 - [x] Normalized columns populated at load time using the Stage 2 functions — one implementation, not two ⭐
 - [x] Ground truth loaded alongside
-- [x] Load of 50k providers + 5k sanctions completes in a sane time — **43.3s** for 50,000 providers, 338,524 block keys, 5,000 sanctions and 5,000 ground-truth rows (providers 34.6s, sanctions 1.9s, ground truth 1.3s). That is across a WAN link to a hosted database, not local disk; a local container will be faster, not slower
+- [x] Load of 50k providers + 5k sanctions completes in a sane time — **43.3s** for 50,000 providers, 338,524 block keys, 5,000 sanctions and 5,000 ground-truth rows (providers 34.6s, sanctions 1.9s, ground truth 1.3s). That is across a WAN link to a hosted database, not local disk, and with containerization cut there is no local alternative to compare against — every later timing is on the same WAN link and should be read that way
 - [x] `concordance db reset` drops and recreates, prompting for confirmation
 
 ### Documentation
@@ -933,8 +939,11 @@ Design notes and the measured numbers live in `docs/orchestration.md`.
 > the run hangs with no error at all. Three changes came out of that, and all three are the
 > right thing to do regardless — snapshot hashing reads in keyset-paged statements, inserts
 > are capped at `DB_INSERT_PAGE_SIZE` rows per statement, and `with_reconnect` retries a
-> dropped connection on a fresh one. A local Postgres, which is what `docker compose up` gives
-> at Stage 10, does not behave this way; the full-file timing is best taken there.
+> dropped connection on a fresh one. A local Postgres would not behave this way, and when this
+> was written Stage 10's `docker compose up` was expected to provide one. Containerization has
+> since been cut, so there is no local Postgres coming: the 50k × 5k timing will be measured
+> across the WAN link to Neon, and the recorded number must say so rather than be presented as
+> engine throughput.
 
 ---
 
@@ -1068,7 +1077,7 @@ Design notes and the measured numbers live in `docs/orchestration.md`.
 
 ### GATE 7
 - [x] Full pytest suite green — unit and integration, against the hosted database
-- [ ] `docker compose up` → OpenAPI docs load at `/docs` with no schema errors — deferred to Stage 10: there is no compose file yet and Docker is not installed. `create_app().openapi()` builds in the unit suite
+- [x] `make api` → OpenAPI docs load at `/docs` with no schema errors — was written against `docker compose up`; containerization is cut, so the native launch is the gate. `create_app().openapi()` also builds in the unit suite
 - [x] Every endpoint in this stage exercised by at least one test
 - [x] Duplicate-approval 409 demonstrated ⭐ — `test_approval_is_admin_only_opens_a_case_and_is_idempotent`; the 409 names the case the first approval opened
 - [x] RBAC denial demonstrated ⭐ — against the real database, and without one: every admin route refuses an analyst before its handler runs
@@ -1312,30 +1321,33 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ---
 
-## Stage 10 — Packaging, hardening, docs, demo · ~12h
+## Stage 10 — Packaging, hardening, docs, demo · ~10h
 
-**Docker Desktop must be installed before starting.** See Stage -1.
+**No prerequisite.** This stage used to open with "Docker Desktop must be installed", and
+to spend its first fourteen items on Dockerfiles and a compose file.
 
-First appearance of containers. The application is known-good natively by now, so any
-failure here is unambiguously a packaging failure — which is exactly why this is last.
+**Containerization was cut on 2026-09-20.** Docker cannot be installed on the development
+machine. The choice was between writing container artifacts blind and cutting them, and
+cutting won: an unverified `docker-compose.yml` in a portfolio repository is worse than no
+compose file at all, because the first thing a reviewer does with one is run it. What the
+compose file was really buying — one command from a clean clone to a running system — is
+bought here natively instead, by `make up`. The estimate drops from ~12h to ~10h.
 
-### Containerization
+The application is known-good natively by now, so any failure in this stage is a packaging
+failure rather than an application one — which is still exactly why this stage is last.
 
-- [ ] `.dockerignore` — `.git`, `.venv`, `node_modules`, `dist`, `data/generated`, `.cache`, `**/__pycache__`
-- [ ] `backend/Dockerfile` — multi-stage, base `python:3.12-slim`, non-root user, no build toolchain in the final layer
-- [ ] `frontend/Dockerfile` — Node build stage → `nginx:alpine` serve stage
-- [ ] `frontend/nginx.conf` — SPA fallback to `index.html`, `/api` proxy, gzip
-- [ ] `docker-compose.yml` — services `postgres`, `api`, `worker`, `web`
-- [ ] `postgres` service: image `postgres:16`, named volume, healthcheck `pg_isready`
-- [ ] `api` and `worker` share the backend image, differ only by entrypoint ⭐
-- [ ] `api` and `worker` both `depends_on: postgres: condition: service_healthy`
-- [ ] Healthchecks on `api` and `web`
-- [ ] `docker-compose.dev.yml` override — source bind mounts, `--reload`, Vite dev server
-- [ ] Migrations run on api startup, or as an explicit one-shot service — decide and document ⭐
-- [ ] Confirm no secret literal appears anywhere in either compose file ⭐
-- [ ] `make up` / `make down` / `make logs` / `make ps` now wired to compose
-- [ ] `make clean` drops volumes, prompting for confirmation
-- [ ] Containerized run reproduces the native metrics exactly ⭐
+### Native launch — what `docker compose up` used to do ⭐
+
+- [ ] `make up` starts api, worker and web as child processes from one terminal ⭐ — the single documented way to run the system
+- [ ] Ctrl-C on `make up` stops all three cleanly, leaving no orphan process ⭐ — the equivalent of `docker compose down`
+- [ ] Startup preflight runs before anything is spawned ⭐ — database reachable, migrations current, required `.env` keys present, ports free. Fail loudly and name the problem, rather than spawning three processes that each fail separately
+- [ ] `make up` runs `alembic upgrade head` before starting api and worker ⭐ — this is the resolution of the old "migrations on startup, or one-shot service" question
+- [ ] api and worker are the same entrypoint module with different arguments ⭐ — preserves the property the shared image was there to demonstrate
+- [ ] Interleaved log output from the three processes is readable and labelled by source
+- [ ] `make logs` / `make ps` either work natively or are removed rather than left as stubs that lie
+- [ ] `make down` stops a detached `make up`
+- [ ] `make clean` truncates the Neon schema, prompting for confirmation first ⭐ — replaces "drops volumes"
+- [ ] `make up` documented in the README as the one command, with its native prerequisites stated
 
 ### Tests
 
@@ -1344,7 +1356,7 @@ failure here is unambiguously a packaging failure — which is exactly why this 
 - [ ] Integration test covering the full pipeline on a small fixture
 - [ ] End-to-end test: upload → run → approve → case, through the API
 - [ ] Performance test asserting the 50k×5k run stays under the recorded budget
-- [ ] All tests run inside Docker, not only on the host ⭐
+- [ ] Full suite green on a second machine — CI, since there is no container to prove host-independence ⭐ — this is what "all tests run inside Docker" was for: catching a suite that only passes on the machine that wrote it
 - [ ] Flaky tests identified and fixed, not retried
 
 ### Security pass
@@ -1361,13 +1373,11 @@ failure here is unambiguously a packaging failure — which is exactly why this 
 
 ### Operations
 
-- [ ] Cold start verified on a clean machine: clone → `.env` → `docker compose up` → seed → demo ⭐
-- [ ] Startup ordering robust — api and worker wait for a healthy postgres
-- [ ] Containers run as non-root
-- [ ] Image sizes sane; no build toolchain in final layers
-- [ ] Graceful shutdown verified for api and worker
+- [ ] Cold start verified on a clean checkout: clone → `py -3.12 -m venv .venv` → `pip install -e .` → `npm ci` → `.env` → `make up` → `make seed` → `make demo` ⭐ — followed verbatim, not from memory
+- [ ] Startup ordering robust — the preflight refuses to spawn api or worker against an unreachable or un-migrated database ⭐
+- [ ] Graceful shutdown verified for api and worker — SIGINT drains the in-flight request and releases the worker's job claim
 - [x] Worker survives a lost database connection — found during the Stage 8 walkthrough setup, when Neon closed the connection mid-claim and the worker exited. The loop now backs off (1 s doubling to 30 s, reset on success) and carries on; a job whose outcome was not recorded stays `RUNNING` until the stale-lock reclaim picks it up. `test_worker_resilience.py`
-- [ ] Log output readable and structured in `docker compose logs`
+- [ ] Log output readable and structured in the `make up` terminal, with the three processes distinguishable
 
 ### Documentation
 
@@ -1405,14 +1415,14 @@ failure here is unambiguously a packaging failure — which is exactly why this 
 ### CI
 
 - [ ] GitHub Actions workflow: lint, typecheck, unit tests on push ⭐
-- [ ] Integration tests against a Postgres service container
+- [ ] Integration tests against a `postgres:17` **service container** ⭐ — the one place containers remain, because GitHub's runners provide Docker and nothing is installed locally. `CREATE EXTENSION pg_trgm` must run in the CI database too, or the trigram blocking tests will not exercise what they claim to
 - [ ] Frontend build and `tsc --noEmit` in CI
-- [ ] Docker build verified in CI
+- [ ] CI is the proof that the install instructions work ⭐ — it starts from a clean checkout and a bare Python, so a missing dependency or an undeclared step fails the build. This replaces "Docker build verified in CI", which proved the same thing by a route no longer available
 - [ ] Status badge in the README
 
 ### GATE 10 — ship
-- [ ] Clean-machine cold start works from the README alone ⭐
-- [ ] `make demo` then the six demo scenarios, run end to end without a hitch ⭐
+- [ ] Clean-checkout cold start works from the README alone, with no container runtime present ⭐
+- [ ] `make demo` then the eight demo scenarios, run end to end without a hitch ⭐
 - [ ] CI green on the default branch ⭐
 - [ ] README contains real measured numbers, not placeholders ⭐
 - [ ] Repository contains no secrets, in the working tree or in history ⭐
@@ -1432,4 +1442,4 @@ The things a reviewer will actually look at. Each must exist and be real.
 - [ ] Precision improving across review rounds via the feedback loop ⭐
 - [ ] Assistant rejecting a hostile query, with the reason shown ⭐
 - [ ] `docs/matching_engine.md` readable by someone who has never seen Fellegi–Sunter ⭐
-- [ ] One command from clone to running demo ⭐
+- [ ] One command from a prepared checkout to a running demo — `make up`, natively ⭐
