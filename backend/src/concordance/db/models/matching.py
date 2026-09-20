@@ -38,7 +38,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from concordance.db.base import Base, CreatedAtMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from concordance.db.enums import (
@@ -183,6 +183,14 @@ class ReconciliationRun(UUIDPrimaryKeyMixin, Base):
         postgresql.UUID(as_uuid=True), ForeignKey("scoring_configs.id", ondelete="SET NULL")
     )
     prompt_version: Mapped[str | None] = mapped_column(String(50))
+    #: Joined on every read: a run is never shown without saying which config
+    #: decided it, and one join costs less than a second query per row.
+    scoring_config: Mapped[ScoringConfig | None] = relationship(lazy="joined")
+
+    @property
+    def scoring_config_version(self) -> str | None:
+        return self.scoring_config.version if self.scoring_config is not None else None
+
     #: Which strategy decided this run, and the full request it was started
     #: with. Replay needs both: a run that does not record `max_candidates`
     #: cannot be re-blocked identically, and one that does not record its

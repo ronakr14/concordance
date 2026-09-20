@@ -252,6 +252,9 @@ class RunOut(ApiModel):
     triggered_by: uuid.UUID | None
     engine_version: str | None
     scoring_config_id: uuid.UUID | None
+    scoring_config_version: str | None = Field(
+        default=None, description="The config version that decided this run."
+    )
     prompt_version: str | None
     provider_snapshot_hash: str | None
     sanction_snapshot_hash: str | None

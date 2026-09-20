@@ -2707,6 +2707,11 @@ export interface components {
             sanction_snapshot_hash: string | null;
             /** Scoring Config Id */
             scoring_config_id: string | null;
+            /**
+             * Scoring Config Version
+             * @description The config version that decided this run.
+             */
+            scoring_config_version?: string | null;
             /** Started At */
             started_at: string | null;
             /** Status */

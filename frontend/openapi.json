@@ -5336,6 +5336,18 @@
             ],
             "title": "Scoring Config Id"
           },
+          "scoring_config_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The config version that decided this run.",
+            "title": "Scoring Config Version"
+          },
           "started_at": {
             "anyOf": [
               {

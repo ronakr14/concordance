@@ -1254,17 +1254,19 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ### Feedback loop ⭐
 
-- [ ] `feedback_events` populated on every approve and reject (wired in Stage 7 — verify here)
-- [ ] `concordance retune` — refits m/u on accumulated labels (supervised, not EM) ⭐
-- [ ] Re-optimizes thresholds against `TARGET_PRECISION` using the labelled set
-- [ ] Writes a **new** `scoring_configs` row; never mutates an existing one ⭐
-- [ ] Minimum-label guard — refuse to retune below a configurable label count
-- [ ] `POST /scoring-configs/retune` endpoint, admin only
-- [ ] `GET /scoring-configs` — list versions with metrics and lineage
-- [ ] `POST /scoring-configs/{id}/activate`
-- [ ] Precision/recall per review round chart ⭐
-- [ ] UI showing which config version produced which run
-- [ ] Guard: retuning on biased labels (analysts only ever see the grey band) acknowledged and documented ⭐
+- [x] `feedback_events` populated on every approve and reject (wired in Stage 7 — verify here) — verified by `tests/integration/test_feedback_loop.py`, which reads them back as training labels with their comparison vectors intact
+- [x] `concordance retune` — refits m/u on accumulated labels ⭐ — **semi-supervised, not supervised.** Labels are clamped into an EM fit over the run's whole candidate-pair tally (`run_patterns`) rather than replacing it: `u` describes every candidate pair, and a supervised refit on the hard cases a reviewer sees teaches it that agreement is common among non-matches. See `docs/feedback_loop.md`
+- [x] Re-optimizes thresholds against `TARGET_PRECISION` — **on the run's population, not the labelled set.** A few hundred labels cannot place a 99% threshold; it turns on whether one or two negatives land in the holdout, and in simulation the threshold jumped every round and took recall with it. The labels fit the calibration curve; the population decides where to cut it
+- [x] Writes a **new** `scoring_configs` row; never mutates an existing one ⭐ — with `parent_id`, `metrics` and `created_by`; activation is a separate audited row in `config_activations`
+- [x] Minimum-label guard — `RETUNE_MIN_LABELS` (default 100), and at least a tenth of it in each class
+- [x] `POST /scoring-configs/retune` endpoint, admin only — synchronous; the fit runs over distinct comparison vectors, so it answers in seconds
+- [x] `GET /scoring-configs` — list versions with metrics and lineage
+- [x] `POST /scoring-configs/{id}/activate` — audited, and refused when it is already active
+- [x] Precision/recall per review round chart ⭐ — the Models page, from `lab_sweeps` kind `feedback`
+- [x] UI showing which config version produced which run — the version is on every run (`RunOut.scoring_config_version`, shown with the run progress), and the Models page counts runs per version
+- [x] Guard: retuning on biased labels (analysts only ever see the grey band) acknowledged and documented ⭐ — three answers, each for what it can fix: semi-supervised EM is unbiased under missing-at-random, a random `AUDIT_RATE` sample of auto-rejects supplies weighted labels below the reject threshold, and thresholds come from the population. `docs/feedback_loop.md` says what each does not fix
+- [x] **Reviewer error rate** ⭐ — not in the original plan, and the loop does not work without it: on labels 3% wrong a 99% precision target is unreachable, and the first simulation fell from F1 0.93 to 0.42. `REVIEWER_ERROR_RATE` enters both the EM responsibilities and the de-noised label counts
+- [x] **Activation gate** ⭐ — a retune compares both configs on the same held-out labels and recommends keeping the parent unless the new one holds precision without buying it with review load. With 3% label noise this refuses every retune and the system stays put; ungated, the same labels take F1 from 0.906 to 0.465
 
 ### Run comparison UI ⭐
 
@@ -1301,8 +1303,8 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 ### GATE 9
 - [x] Lab page renders the robustness curve and reliability diagram from real sweep data ⭐ — 50,000 × 5,000, ten levels, 30 cells in 221 s. At 50% corruption probabilistic F1 0.949 against fuzzy 0.305; at 90%, 0.887 against 0.185. Individual-model ECE at 50% goes from 0.087 to 0.026. Driven in Chrome by `lab.spec.ts`, 2/2
 - [ ] LLM cost-versus-baseline panel shows a real saving ⭐
-- [ ] `concordance retune` produces a new config version with improved holdout precision ⭐
-- [ ] Precision-per-round chart shows movement across at least three simulated review rounds
+- [x] `concordance retune` produces a new config version with improved holdout precision ⭐ — on clean labels, holdout recall 0.882 → 0.922 and review load 14.0% → 10.5% at 200 labels, precision held; the new version is written inactive with both configs' numbers on it
+- [x] Precision-per-round chart shows movement across at least three simulated review rounds — five rounds, F1 0.906 → 0.931 → 0.945 → 0.947 with the grey band 20.9% → 14.0%, then the gate stops it changing. With 3% reviewer error the gate refuses every round and the curve stays flat at 0.906 — the honest result, and the reason the gate exists
 - [ ] Run comparison shows a real diff between two configs
 - [ ] Every adversarial assistant prompt in the test suite is rejected ⭐
 - [ ] Assistant answers at least ten realistic analyst questions correctly

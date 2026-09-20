@@ -484,6 +484,9 @@ function RunProgress({ run }: { run: Run }) {
       <div className="flex items-center gap-3">
         <StatusBadge status={run.status} />
         <span className="font-mono text-xs text-muted">run {run.id.slice(0, 8)}</span>
+        {run.scoring_config_version ? (
+          <span className="font-mono text-xs text-muted">config {run.scoring_config_version}</span>
+        ) : null}
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-accent-wash">
         <div className="h-full bg-series-1 transition-[width]" style={{ width: `${fraction * 100}%` }} />
