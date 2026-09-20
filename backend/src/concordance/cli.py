@@ -42,6 +42,9 @@ lab_app = typer.Typer(
 configs_app = typer.Typer(
     help="Scoring config versions: list them, activate one.", no_args_is_help=True
 )
+assistant_app = typer.Typer(
+    help="Ask the data a question in English; see the SQL it ran.", no_args_is_help=True
+)
 
 app.add_typer(data_app, name="data")
 app.add_typer(match_app, name="match")
@@ -53,6 +56,7 @@ app.add_typer(run_app, name="run")
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(lab_app, name="lab")
 app.add_typer(configs_app, name="configs")
+app.add_typer(assistant_app, name="assistant")
 
 log = get_logger("cli")
 
@@ -1522,6 +1526,57 @@ def configs_activate(
         typer.secho(exc.message, fg="red")
         raise typer.Exit(code=1) from exc
     typer.secho(f"{version} is now the active config", fg="green")
+
+
+@assistant_app.command("ask")
+def assistant_ask(
+    question: Annotated[str, typer.Argument(help="The question, in English.")],
+    show_sql_only: Annotated[
+        bool, typer.Option("--sql-only", help="Print the SQL and stop; run nothing.")
+    ] = False,
+) -> None:
+    """Turn a question into one bounded read-only SELECT, run it, and print the rows."""
+    from concordance.assistant import service
+    from concordance.assistant.prompt import QuestionRejectedError
+    from concordance.audit.service import Actor
+    from concordance.db.session import session_scope
+    from concordance.errors import DomainError
+
+    settings, _ = start(None, echo_config=False)
+    try:
+        with session_scope(settings) as session:
+            answer = service.ask(session, settings, Actor.system(), question)
+    except (DomainError, QuestionRejectedError) as exc:
+        typer.secho(str(exc), fg="red")
+        raise typer.Exit(code=1) from exc
+
+    if answer.sql:
+        typer.secho(answer.sql, fg="cyan")
+    if show_sql_only:
+        return
+    if not answer.ok:
+        typer.secho(f"refused ({answer.rejection_code}): {answer.rejected}", fg="yellow")
+        raise typer.Exit(code=1)
+    for note in answer.notes:
+        typer.echo(f"note: {note}")
+    widths = [
+        max(len(str(c)), *(len(str(row[i])) for row in answer.rows)) if answer.rows else len(str(c))
+        for i, c in enumerate(answer.columns)
+    ]
+    typer.echo("  ".join(str(c).ljust(w) for c, w in zip(answer.columns, widths, strict=True)))
+    for row in answer.rows[:50]:
+        typer.echo("  ".join(str(v).ljust(w) for v, w in zip(row, widths, strict=True)))
+    typer.secho(
+        f"{answer.row_count} row(s) in {answer.seconds:.2f}s via {answer.model}", fg="green"
+    )
+
+
+@assistant_app.command("schema")
+def assistant_schema() -> None:
+    """The views the assistant may read, and nothing else exists for it."""
+    from concordance.assistant.views import schema_prompt
+
+    typer.echo(schema_prompt())
 
 
 def main() -> None:

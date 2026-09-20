@@ -559,6 +559,22 @@ One row per row of an uploaded file, extracted into the canonical fields with th
 
 ---
 
+### Assistant views
+
+Five read-only views, the only objects `concordance_assistant` may read. They
+are projections, not tables: no JSONB column is exposed, so `sanction_records.raw`
+and `match_results.explanation` cannot be read through them. See
+`docs/assistant.md` and `backend/src/concordance/assistant/views.py`, which
+documents every column for the prompt.
+
+| View | Rows | Built from |
+|---|---|---|
+| `assistant_matches` | current engine decisions (`superseded_by IS NULL`) beside the record they decided | `match_results`, `sanction_records` |
+| `assistant_cases` | compliance cases with a derived `phase` | `cases`, `sanction_records` |
+| `assistant_providers` | the provider master, names flattened | `providers` |
+| `assistant_sanctions` | current sanction records | `sanction_records` |
+| `assistant_runs` | runs with their config version | `reconciliation_runs`, `scoring_configs` |
+
 ## 2. Enumerations
 
 Every enumerated column is a `varchar` with a `CHECK` constraint rather than a

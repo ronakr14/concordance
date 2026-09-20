@@ -54,6 +54,10 @@ export type FeedbackRound = S["FeedbackRoundOut"];
 export type LabFeedback = S["LabFeedbackOut"];
 
 export type ScoringConfig = S["ScoringConfigOut"];
+
+export type AssistantAnswer = S["AssistantAnswerOut"];
+export type AssistantView = S["AssistantViewOut"];
+export type AssistantHistory = S["AssistantHistoryOut"];
 export type ConfigActivation = S["ConfigActivationOut"];
 
 export interface Page<T> {

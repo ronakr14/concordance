@@ -41,6 +41,7 @@ export const router = createBrowserRouter([
           { path: "lab", ...page(() => import("@/pages/Lab"), "LabPage") },
           { path: "models", ...page(() => import("@/pages/Models"), "ModelsPage") },
           { path: "compare", ...page(() => import("@/pages/Compare"), "ComparePage") },
+          { path: "assistant", ...page(() => import("@/pages/Assistant"), "AssistantPage") },
           {
             element: <RequireAdmin />,
             children: [{ path: "audit", ...page(() => import("@/pages/Audit"), "AuditPage") }],

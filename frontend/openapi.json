@@ -88,6 +88,258 @@
         "title": "ApprovalOut",
         "type": "object"
       },
+      "AssistantAnswerOut": {
+        "additionalProperties": false,
+        "description": "The answer, or the refusal - always with the SQL that produced either.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "notes": {
+            "description": "What the guard changed, such as an added LIMIT.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "rejected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the question was refused, in words for the analyst.",
+            "title": "Rejected"
+          },
+          "rejection_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Code"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SQL that ran, as the guard regenerated it.",
+            "title": "Sql"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "question",
+          "sql",
+          "columns",
+          "rows",
+          "row_count",
+          "truncated",
+          "notes",
+          "prompt_version",
+          "model",
+          "seconds"
+        ],
+        "title": "AssistantAnswerOut",
+        "type": "object"
+      },
+      "AssistantColumnOut": {
+        "additionalProperties": false,
+        "properties": {
+          "about": {
+            "title": "About",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "about"
+        ],
+        "title": "AssistantColumnOut",
+        "type": "object"
+      },
+      "AssistantHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "asked_at": {
+            "format": "date-time",
+            "title": "Asked At",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "rejected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "sql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sql"
+          }
+        },
+        "required": [
+          "asked_at",
+          "question",
+          "sql",
+          "rows",
+          "rejected"
+        ],
+        "title": "AssistantHistoryOut",
+        "type": "object"
+      },
+      "AssistantQueryIn": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "description": "A question about the data, in English.",
+            "examples": [
+              "how many records are waiting for review?"
+            ],
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AssistantQueryIn",
+        "type": "object"
+      },
+      "AssistantSchemaOut": {
+        "additionalProperties": false,
+        "description": "Everything the assistant can read. There is nothing else.",
+        "properties": {
+          "default_limit": {
+            "title": "Default Limit",
+            "type": "integer"
+          },
+          "max_limit": {
+            "title": "Max Limit",
+            "type": "integer"
+          },
+          "views": {
+            "items": {
+              "$ref": "#/components/schemas/AssistantViewOut"
+            },
+            "title": "Views",
+            "type": "array"
+          }
+        },
+        "required": [
+          "views",
+          "default_limit",
+          "max_limit"
+        ],
+        "title": "AssistantSchemaOut",
+        "type": "object"
+      },
+      "AssistantViewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "about": {
+            "title": "About",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/AssistantColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "about",
+          "columns"
+        ],
+        "title": "AssistantViewOut",
+        "type": "object"
+      },
       "AuditOut": {
         "additionalProperties": false,
         "properties": {
@@ -6562,6 +6814,131 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/assistant/history": {
+      "get": {
+        "description": "This user's recent questions, newest first, read back from the audit log.",
+        "operationId": "history_assistant_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AssistantHistoryOut"
+                  },
+                  "title": "Response History Assistant History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/assistant/query": {
+      "post": {
+        "description": "Turn a question into one bounded, read-only SELECT, run it, and answer.\n\nEvery attempt is written to the audit log - the question, the SQL, the row\ncount and the refusal - before this returns.",
+        "operationId": "query_assistant_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantQueryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantAnswerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "No language model is configured."
+          },
+          "422": {
+            "description": "The question was empty or too long."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Query",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/assistant/schema": {
+      "get": {
+        "description": "The views the assistant may read, as the page lists them for the analyst.",
+        "operationId": "schema_assistant_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantSchemaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Schema",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
     "/audit": {
       "get": {
         "operationId": "search_audit_audit_get",

@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     #: a sample overturns. Retuning de-noises labels by it; see
     #: `learning/retune.py` for why ignoring it collapses recall.
     REVIEWER_ERROR_RATE: float = Field(default=0.02, ge=0.0, lt=0.5)
+    #: Server-side ceiling on one assistant query, in milliseconds. A question
+    #: nobody waits for is a question better asked of a narrower view.
+    ASSISTANT_TIMEOUT_MS: int = Field(default=5_000, ge=100, le=60_000)
+    #: Rows one assistant answer may return; the guard enforces it as a LIMIT.
+    ASSISTANT_MAX_ROWS: int = Field(default=1_000, ge=1, le=10_000)
 
     # --- reserved for later stages; optional until then --------------------
     DATABASE_URL: str | None = None  # Stage 5

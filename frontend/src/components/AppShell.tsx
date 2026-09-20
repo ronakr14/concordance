@@ -6,6 +6,7 @@ import {
   Moon,
   ScrollText,
   ShieldAlert,
+  Sparkles,
   Sun,
   Users,
   Briefcase,
@@ -30,6 +31,7 @@ const NAV = [
   { to: "/lab", label: "Lab", icon: FlaskConical },
   { to: "/models", label: "Models", icon: GitBranch },
   { to: "/compare", label: "Compare", icon: GitCompare },
+  { to: "/assistant", label: "Assistant", icon: Sparkles },
   { to: "/audit", label: "Audit", icon: ScrollText, adminOnly: true },
 ] as const;
 

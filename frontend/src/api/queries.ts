@@ -30,6 +30,7 @@ export type LabSweepIn = Body<"/lab/sweep", "post">;
 export type LabLlmIn = Body<"/lab/llm", "post">;
 export type LabFeedbackIn = Body<"/lab/feedback", "post">;
 export type RetuneIn = Body<"/scoring-configs/retune", "post">;
+export type AssistantQueryIn = Body<"/assistant/query", "post">;
 
 export const keys = {
   stats: ["stats"] as const,
@@ -47,6 +48,7 @@ export const keys = {
   runs: ["runs"] as const,
   lab: ["lab"] as const,
   configs: ["scoring-configs"] as const,
+  assistant: ["assistant"] as const,
 };
 
 /** Paged lists keep the previous page on screen while the next loads. */
@@ -358,5 +360,22 @@ export function useActivateConfig() {
       void client.invalidateQueries({ queryKey: keys.configs });
       void client.invalidateQueries({ queryKey: keys.runs });
     },
+  });
+}
+
+// --- the assistant --------------------------------------------------------------------
+
+export const useAssistantSchema = () =>
+  useQuery({ queryKey: [...keys.assistant, "schema"], queryFn: () => unwrap(api.GET("/assistant/schema")) });
+
+export const useAssistantHistory = () =>
+  useQuery({ queryKey: [...keys.assistant, "history"], queryFn: () => unwrap(api.GET("/assistant/history")) });
+
+export function useAskAssistant() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AssistantQueryIn) => unwrap(api.POST("/assistant/query", { body })),
+    // Every question, answered or refused, lands in the history.
+    onSettled: () => client.invalidateQueries({ queryKey: [...keys.assistant, "history"] }),
   });
 }

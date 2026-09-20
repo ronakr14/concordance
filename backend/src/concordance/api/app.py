@@ -21,6 +21,7 @@ from concordance import __version__
 from concordance.api.errors import install_error_handlers
 from concordance.api.middleware import LoginRateLimitMiddleware, RequestContextMiddleware
 from concordance.api.routers import (
+    assistant,
     audit_stats,
     cases,
     configs,
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(audit_stats.stats_router)
     app.include_router(lab.router)
     app.include_router(configs.router)
+    app.include_router(assistant.router)
 
     @app.get("/health", response_model=HealthOut, tags=["meta"])
     def health() -> HealthOut:

@@ -4,6 +4,69 @@
  */
 
 export interface paths {
+    "/assistant/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History
+         * @description This user's recent questions, newest first, read back from the audit log.
+         */
+        get: operations["history_assistant_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query
+         * @description Turn a question into one bounded, read-only SELECT, run it, and answer.
+         *
+         *     Every attempt is written to the audit log - the question, the SQL, the row
+         *     count and the refusal - before this returns.
+         */
+        post: operations["query_assistant_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assistant/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Schema
+         * @description The views the assistant may read, as the page lists them for the analyst.
+         */
+        get: operations["schema_assistant_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit": {
         parameters: {
             query?: never;
@@ -1010,6 +1073,98 @@ export interface components {
              */
             case_created: boolean;
             match: components["schemas"]["MatchOut"];
+        };
+        /**
+         * AssistantAnswerOut
+         * @description The answer, or the refusal - always with the SQL that produced either.
+         */
+        AssistantAnswerOut: {
+            /** Columns */
+            columns: string[];
+            /** Model */
+            model: string | null;
+            /**
+             * Notes
+             * @description What the guard changed, such as an added LIMIT.
+             */
+            notes: string[];
+            /** Prompt Version */
+            prompt_version: string;
+            /** Question */
+            question: string;
+            /**
+             * Rejected
+             * @description Why the question was refused, in words for the analyst.
+             */
+            rejected?: string | null;
+            /** Rejection Code */
+            rejection_code?: string | null;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: unknown[][];
+            /** Seconds */
+            seconds: number;
+            /**
+             * Sql
+             * @description The SQL that ran, as the guard regenerated it.
+             */
+            sql: string | null;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** AssistantColumnOut */
+        AssistantColumnOut: {
+            /** About */
+            about: string;
+            /** Name */
+            name: string;
+        };
+        /** AssistantHistoryOut */
+        AssistantHistoryOut: {
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Question */
+            question: string;
+            /** Rejected */
+            rejected: string | null;
+            /** Rows */
+            rows: number;
+            /** Sql */
+            sql: string | null;
+        };
+        /** AssistantQueryIn */
+        AssistantQueryIn: {
+            /**
+             * Question
+             * @description A question about the data, in English.
+             * @example how many records are waiting for review?
+             */
+            question: string;
+        };
+        /**
+         * AssistantSchemaOut
+         * @description Everything the assistant can read. There is nothing else.
+         */
+        AssistantSchemaOut: {
+            /** Default Limit */
+            default_limit: number;
+            /** Max Limit */
+            max_limit: number;
+            /** Views */
+            views: components["schemas"]["AssistantViewOut"][];
+        };
+        /** AssistantViewOut */
+        AssistantViewOut: {
+            /** About */
+            about: string;
+            /** Columns */
+            columns: components["schemas"]["AssistantColumnOut"][];
+            /** Name */
+            name: string;
         };
         /** AuditOut */
         AuditOut: {
@@ -3103,6 +3258,95 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    history_assistant_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantHistoryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_assistant_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantQueryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantAnswerOut"];
+                };
+            };
+            /** @description No language model is configured. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The question was empty or too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    schema_assistant_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSchemaOut"];
+                };
+            };
+        };
+    };
     search_audit_audit_get: {
         parameters: {
             query?: {

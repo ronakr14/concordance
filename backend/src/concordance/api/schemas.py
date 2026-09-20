@@ -952,6 +952,66 @@ class ConfigActivationOut(ApiModel):
     created_at: datetime
 
 
+# --------------------------------------------------------------------------
+# the assistant
+# --------------------------------------------------------------------------
+
+
+class AssistantQueryIn(ApiModel):
+    question: str = Field(
+        min_length=1,
+        max_length=500,
+        description="A question about the data, in English.",
+        examples=["how many records are waiting for review?"],
+    )
+
+
+class AssistantColumnOut(ApiModel):
+    name: str
+    about: str
+
+
+class AssistantViewOut(ApiModel):
+    name: str
+    about: str
+    columns: list[AssistantColumnOut]
+
+
+class AssistantSchemaOut(ApiModel):
+    """Everything the assistant can read. There is nothing else."""
+
+    views: list[AssistantViewOut]
+    default_limit: int
+    max_limit: int
+
+
+class AssistantAnswerOut(ApiModel):
+    """The answer, or the refusal - always with the SQL that produced either."""
+
+    question: str
+    sql: str | None = Field(description="The SQL that ran, as the guard regenerated it.")
+    columns: list[str]
+    rows: list[list[Any]]
+    row_count: int
+    truncated: bool
+    notes: list[str] = Field(description="What the guard changed, such as an added LIMIT.")
+    rejected: str | None = Field(
+        default=None, description="Why the question was refused, in words for the analyst."
+    )
+    rejection_code: str | None = None
+    prompt_version: str
+    model: str | None
+    seconds: float
+
+
+class AssistantHistoryOut(ApiModel):
+    asked_at: datetime
+    question: str
+    sql: str | None
+    rows: int
+    rejected: str | None
+
+
 MatchDetailOut.model_rebuild()
 BulkItemOut.model_rebuild()
 

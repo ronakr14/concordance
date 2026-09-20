@@ -1279,27 +1279,27 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ### AI Assistant ⭐
 
-- [ ] Read-only Postgres role created in a migration ⭐
-- [ ] Whitelisted views defined for the assistant — never raw tables ⭐
-- [ ] Views exclude `users`, `refresh_tokens`, password hashes and API-key-bearing rows ⭐
-- [ ] Schema description generated for the prompt from the whitelisted views only
-- [ ] NL → SQL prompt, versioned like the others
-- [ ] **Guard: parse the generated SQL with `sqlglot`** ⭐
-- [ ] Guard: reject anything that is not a single statement ⭐
-- [ ] Guard: reject anything that is not a `SELECT` ⭐
-- [ ] Guard: reject DDL and DML keywords ⭐
-- [ ] Guard: reject comments and statement separators ⭐
-- [ ] Guard: reject any table or view outside the whitelist ⭐
-- [ ] Guard: reject CTEs or subqueries that reach outside the whitelist ⭐
-- [ ] Guard: enforce an injected `LIMIT`
-- [ ] Execute under a statement timeout, on the read-only role ⭐
-- [ ] **Show the generated SQL alongside every answer** ⭐
-- [ ] Render results as a table, and as a chart where the shape suits it
-- [ ] Rejected queries explain *why* they were rejected
-- [ ] `POST /assistant/query` endpoint, authenticated
-- [ ] Assistant queries written to the audit log ⭐
-- [ ] Test suite of adversarial prompts attempting injection, privilege escalation and data exfiltration ⭐
-- [ ] Assistant page in the UI with query history
+- [x] Read-only Postgres role created in a migration ⭐ — `concordance_assistant`, `NOLOGIN NOINHERIT`, owns nothing. A query assumes it with `SET LOCAL ROLE` inside a `READ ONLY` transaction, so there is no second connection string and therefore no second secret
+- [x] Whitelisted views defined for the assistant — never raw tables ⭐ — five: matches, cases, providers, sanctions, runs
+- [x] Views exclude `users`, `refresh_tokens`, password hashes and API-key-bearing rows ⭐ — and `audit_logs`, `llm_calls`, `jobs`, `column_mappings`. No JSONB column is exposed either, so `sanction_records.raw` and `match_results.explanation` cannot be read at all
+- [x] Schema description generated for the prompt from the whitelisted views only — `assistant/views.py` is the one source: the prompt, the page's "what it can read" panel and the guard's whitelist all read it
+- [x] NL → SQL prompt, versioned like the others — `nl_to_sql_v1.md`; the version is recorded with every answer
+- [x] **Guard: parse the generated SQL with `sqlglot`** ⭐ — and **regenerate it from the parse tree**: what runs is the string the guard printed, so nothing the parser missed can ride along
+- [x] Guard: reject anything that is not a single statement ⭐
+- [x] Guard: reject anything that is not a `SELECT` ⭐
+- [x] Guard: reject DDL and DML keywords ⭐ — by node type, not by keyword matching
+- [x] Guard: reject comments and statement separators ⭐
+- [x] Guard: reject any table or view outside the whitelist ⭐ — including any schema qualifier, `pg_catalog` and `information_schema`
+- [x] Guard: reject CTEs or subqueries that reach outside the whitelist ⭐
+- [x] Guard: enforce an injected `LIMIT` — added when missing, lowered when above `ASSISTANT_MAX_ROWS`, reported as a note
+- [x] Execute under a statement timeout, on the read-only role ⭐ — `ASSISTANT_TIMEOUT_MS`, in a transaction that is rolled back either way
+- [x] **Show the generated SQL alongside every answer** ⭐ — and alongside every refusal, so what was refused is visible too
+- [x] Render results as a table, and as a chart where the shape suits it — two columns whose second is numeric, between 2 and 25 rows, become a bar chart
+- [x] Rejected queries explain *why* they were rejected — a reason in words plus a code (`forbidden_table`, `comment`, …)
+- [x] `POST /assistant/query` endpoint, authenticated — a refusal is a 200 with `rejected` set; only an empty or oversized question is a 422
+- [x] Assistant queries written to the audit log ⭐ — question, SQL, row count, refusal, model and prompt version, answered or not
+- [x] Test suite of adversarial prompts attempting injection, privilege escalation and data exfiltration ⭐ — 20 prompts paired with the SQL a model that fell for them would write, plus 41 SQL-level attacks in `tests/unit/test_assistant_guard.py`, plus two tests that probe the role itself
+- [x] Assistant page in the UI with query history — with the schema panel, example questions, and the SQL beside every answer
 
 ### GATE 9
 - [x] Lab page renders the robustness curve and reliability diagram from real sweep data ⭐ — 50,000 × 5,000, ten levels, 30 cells in 221 s. At 50% corruption probabilistic F1 0.949 against fuzzy 0.305; at 90%, 0.887 against 0.185. Individual-model ECE at 50% goes from 0.087 to 0.026. Driven in Chrome by `lab.spec.ts`, 2/2
@@ -1307,8 +1307,8 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 - [x] `concordance retune` produces a new config version with improved holdout precision ⭐ — on clean labels, holdout recall 0.882 → 0.922 and review load 14.0% → 10.5% at 200 labels, precision held; the new version is written inactive with both configs' numbers on it
 - [x] Precision-per-round chart shows movement across at least three simulated review rounds — five rounds, F1 0.906 → 0.931 → 0.945 → 0.947 with the grey band 20.9% → 14.0%, then the gate stops it changing. With 3% reviewer error the gate refuses every round and the curve stays flat at 0.906 — the honest result, and the reason the gate exists
 - [x] Run comparison shows a real diff between two configs — proved end to end by `frontend/e2e/compare.spec.ts` and `tests/integration/test_reconciliation_runs.py`, on two runs of the same records under configs whose accept thresholds differ
-- [ ] Every adversarial assistant prompt in the test suite is rejected ⭐
-- [ ] Assistant answers at least ten realistic analyst questions correctly
+- [x] Every adversarial assistant prompt in the test suite is rejected ⭐ — 20 prompt-level attacks and 41 SQL-level ones, each with the refusal code it must produce; two further tests prove the role cannot read the five tables that matter, nor write
+- [x] Assistant answers at least ten realistic analyst questions correctly — 10/10 through the live chain (groq/openai/gpt-oss-20b), each producing correct SQL over the right view. Nine read exactly as asked; "list organizations that were excluded" joined the provider view rather than reading `assistant_sanctions.is_organization`, which answers a near-miss of the question
 
 ---
 
