@@ -51,6 +51,23 @@ likelihood surface is shallow enough for the starting point to decide the
 answer, and the Stage 9 feedback loop, where reviewer decisions accumulate into
 exactly such a slice.
 
+**Semi-supervised EM** is how reviewer labels enter a refit (Stage 9). A
+labelled pair keeps its place in the data, but its verdict becomes a second
+observation of its class. Reviewers are wrong at some rate epsilon, so a
+verdict is evidence rather than truth: the pair's responsibility is
+P(match | its vector, its verdict), and its likelihood term is the probability
+of both. With epsilon at 0 that is a clamp - the responsibility is the label -
+and with a few percent it stops one mistaken verdict on a textbook match from
+teaching the model that agreement means nothing. The unlabelled pairs are
+fitted exactly as before. This is the likelihood of the
+data actually observed, so under the one assumption it needs - whether a pair
+got reviewed depends only on things the system observed, its scores and a
+random audit draw - it is unbiased without any reweighting. The alternative,
+adding reviewed pairs to the tables as pseudo-counts, is not: reviewers see the
+hard cases, and `u` describes every candidate pair, most of them easy
+non-matches. Feeding it hard negatives teaches it that agreement is common
+among non-matches, and recall pays for it.
+
 The fit runs over *distinct comparison patterns with counts*, not over pairs.
 Two hundred thousand candidate pairs collapse to a few thousand distinct
 vectors, so an iteration costs a few thousand operations rather than a few
@@ -138,6 +155,44 @@ class LabelledSlice:
     @property
     def positives(self) -> int:
         return sum(self.labels)
+
+
+@dataclass(frozen=True, slots=True)
+class ClampedPatterns:
+    """Labelled comparison vectors, with counts: pairs whose class is known.
+
+    The input to semi-supervised EM. Aggregated like `PatternCounts`, because a
+    thousand reviewer labels collapse to a few hundred distinct (vector, label)
+    pairs.
+    """
+
+    kind: ModelKind
+    patterns: tuple[ComparisonVector, ...]
+    labels: tuple[int, ...]
+    counts: tuple[int, ...]
+
+    @property
+    def total(self) -> int:
+        return sum(self.counts)
+
+    @property
+    def positives(self) -> int:
+        return sum(c for c, y in zip(self.counts, self.labels, strict=True) if y)
+
+    @classmethod
+    def from_labels(
+        cls, kind: ModelKind, labelled: Iterable[tuple[ComparisonVector, int]]
+    ) -> ClampedPatterns:
+        tally: Counter[tuple[ComparisonVector, int]] = Counter(
+            (tuple(v), 1 if y else 0) for v, y in labelled
+        )
+        ordered = sorted(tally)
+        return cls(
+            kind,
+            tuple(v for v, _ in ordered),
+            tuple(y for _, y in ordered),
+            tuple(tally[k] for k in ordered),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,16 +456,29 @@ def _one_fit(
     max_iter: int,
     tolerance: float,
     warm_start: LabelledSlice | None = None,
+    clamped: ClampedPatterns | None = None,
+    init: FellegiSunterModel | None = None,
+    label_noise: float = 0.0,
 ) -> tuple[
     dict[str, list[float]], dict[str, list[float]], float, int, float, list[dict[str, float]]
 ]:
     """One EM run from one start. Returns the fitted tables and its trace."""
     names = FIELD_NAMES[data.kind]
     sizes = LEVEL_COUNTS[data.kind]
-    if warm_start is not None:
+    if init is not None:
+        m = {k: list(v) for k, v in init.m.items()}
+        u = {k: list(v) for k, v in init.u.items()}
+        lam = init.lam
+    elif warm_start is not None:
         m, u, lam = _warm_start_tables(data.kind, warm_start, smoothing)
     else:
         m, u, lam = _initial_tables(data.kind, rng, jitter)
+    fixed = clamped if clamped is not None and clamped.total else None
+    # log P(verdict | class): right with 1 - epsilon, wrong with epsilon. A
+    # wrong verdict with epsilon = 0 is impossible, hence -inf, which makes the
+    # responsibility exactly the label.
+    log_right = math.log(1.0 - label_noise)
+    log_wrong = math.log(label_noise) if label_noise > 0 else -math.inf
 
     trace: list[dict[str, float]] = []
     previous = -math.inf
@@ -435,6 +503,20 @@ def _one_fit(
                 b += log_u[name][level]
             responsibilities.append(sigmoid(a - b))
             log_likelihood += count * _log_add(a, b)
+        labelled_g: list[float] = []
+        if fixed is not None:
+            # A labelled pair contributes the probability of its vector *and*
+            # its verdict, and its responsibility is conditioned on both.
+            for pattern, label, count in zip(
+                fixed.patterns, fixed.labels, fixed.counts, strict=True
+            ):
+                a = log_lam + (log_right if label else log_wrong)
+                b = log_one_minus + (log_wrong if label else log_right)
+                for name, level in zip(names, pattern, strict=True):
+                    a += log_m[name][level]
+                    b += log_u[name][level]
+                labelled_g.append(sigmoid(a - b))
+                log_likelihood += count * _log_add(a, b)
 
         # M-step: re-estimate every table from the weighted level counts.
         # `marginal` is the overall level distribution, and it is what both
@@ -449,8 +531,15 @@ def _one_fit(
             for name, level in zip(names, pattern, strict=True):
                 m_counts[name][level] += weighted
                 u_counts[name][level] += complement
+        if fixed is not None:
+            for pattern, count, g in zip(fixed.patterns, fixed.counts, labelled_g, strict=True):
+                weighted = count * g
+                match_mass += weighted
+                for name, level in zip(names, pattern, strict=True):
+                    m_counts[name][level] += weighted
+                    u_counts[name][level] += count - weighted
 
-        total = float(data.total)
+        total = float(data.total + (fixed.total if fixed is not None else 0))
         lam = match_mass / total if total else 0.0
         non_match_mass = total - match_mass
         for name, size in zip(names, sizes, strict=True):
@@ -540,6 +629,9 @@ def fit_em(
     tolerance: float = DEFAULT_TOLERANCE,
     min_pairs: int = 50,
     warm_start: LabelledSlice | None = None,
+    clamped: ClampedPatterns | None = None,
+    init: FellegiSunterModel | None = None,
+    label_noise: float = 0.0,
 ) -> FellegiSunterModel:
     """Fit m, u and lambda by EM. Deterministic under `seed`.
 
@@ -548,15 +640,24 @@ def fit_em(
     a bad slice cannot trap the search. It is optional by design - the default
     fit uses no labels at all.
 
+    `clamped` makes the fit semi-supervised: those pairs carry their verdicts
+    into every E-step, each wrong with probability `label_noise` (see the
+    module docstring). `init` starts the first restart
+    from an existing model's tables - a retune begins where its parent config
+    ended, not from the generic prior. Neither changes the other restarts.
+
     Raises `DegenerateFitError` when the fit found one component rather than
     two, or when there are too few pairs for the estimate to mean anything -
     the organization model routinely has an order of magnitude fewer pairs than
     the individual one, and quietly serving a model fitted on forty pairs is
     worse than refusing to.
     """
-    if data.total < min_pairs:
+    if not 0.0 <= label_noise < 0.5:
+        raise ValueError(f"label_noise must be in [0, 0.5), got {label_noise}")
+    observed = data.total + (clamped.total if clamped is not None else 0)
+    if observed < min_pairs:
         raise DegenerateFitError(
-            f"{data.kind} fit needs at least {min_pairs} candidate pairs, got {data.total}"
+            f"{data.kind} fit needs at least {min_pairs} candidate pairs, got {observed}"
         )
 
     best: tuple[float, Any] | None = None
@@ -567,7 +668,17 @@ def fit_em(
         jitter = 0.0 if restart == 0 else 0.35
         start = warm_start if restart == 0 else None
         result = _one_fit(
-            data, rng, jitter, smoothing, u_floor, max_iter, tolerance, start
+            data,
+            rng,
+            jitter,
+            smoothing,
+            u_floor,
+            max_iter,
+            tolerance,
+            start,
+            clamped=clamped,
+            init=init if restart == 0 else None,
+            label_noise=label_noise,
         )
         log_likelihood = result[4]
         if best is None or log_likelihood > best[0]:
@@ -576,8 +687,11 @@ def fit_em(
     assert best is not None
     m, u, lam, iterations, log_likelihood, trace = best[1]
 
-    # Label switching: EM does not know which component is the match class.
-    if _mean_agreement(u, data.kind) > _mean_agreement(m, data.kind):
+    # Label switching: EM does not know which component is the match class -
+    # unless labelled pairs were clamped, in which case the labels already
+    # named it and swapping would contradict them.
+    semi = clamped is not None and clamped.total > 0
+    if not semi and _mean_agreement(u, data.kind) > _mean_agreement(m, data.kind):
         m, u = u, m
         lam = 1.0 - lam
         for row in trace:
@@ -597,11 +711,11 @@ def fit_em(
         lam=lam,
         u_floor=u_floor,
         smoothing=smoothing,
-        n_pairs=data.total,
+        n_pairs=observed,
         n_patterns=len(data.patterns),
         seed=seed,
         restarts=restarts,
-        warm_started=warm_start is not None,
+        warm_started=warm_start is not None or init is not None,
         iterations=iterations,
         log_likelihood=log_likelihood,
         convergence=trace,

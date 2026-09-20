@@ -315,6 +315,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Feedback
+         * @description The newest simulated review rounds: precision and recall, round by round.
+         */
+        get: operations["feedback_lab_feedback_get"];
+        put?: never;
+        /**
+         * Request Feedback
+         * @description Queue simulated review rounds on a finished sweep's datasets. Admin only.
+         */
+        post: operations["request_feedback_lab_feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lab/llm": {
         parameters: {
             query?: never;
@@ -756,6 +780,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scoring-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Configs
+         * @description Every version, newest first, with lineage, metrics, run counts and the active flag.
+         */
+        get: operations["list_configs_scoring_configs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scoring-configs/activations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activations
+         * @description Which config was live when, newest first, and who switched it.
+         */
+        get: operations["activations_scoring_configs_activations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scoring-configs/retune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retune
+         * @description Retune the active config on every reviewer label so far. Admin only.
+         *
+         *     Writes a new version whose parent is the active one; never edits either.
+         *     Takes seconds - the fit runs over a run's distinct comparison vectors, not
+         *     its pairs - so it answers directly rather than through a job.
+         */
+        post: operations["retune_scoring_configs_retune_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scoring-configs/{config_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate
+         * @description Make a version the one new runs score with. Admin only; audited.
+         */
+        post: operations["activate_scoring_configs__config_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stats/case-status": {
         parameters: {
             query?: never;
@@ -845,6 +953,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateIn */
+        ActivateIn: {
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * AdjudicationOut
          * @description What the adjudicator said, after the same checks the pipeline ran on it.
@@ -1380,6 +1493,27 @@ export interface components {
             /** Warnings */
             warnings: number;
         };
+        /** ConfigActivationOut */
+        ConfigActivationOut: {
+            /** Activated By */
+            activated_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Scoring Config Id
+             * Format: uuid
+             */
+            scoring_config_id: string;
+            /** Version */
+            version: string;
+        };
         /** ErrorBodyOut */
         ErrorBodyOut: {
             /** Code */
@@ -1402,6 +1536,34 @@ export interface components {
             source_authorities: string[];
             /** States */
             states: string[];
+        };
+        /**
+         * FeedbackRoundOut
+         * @description One simulated review round: the labels so far, and the config they produced.
+         */
+        FeedbackRoundOut: {
+            /** Config Id */
+            config_id: string;
+            /** Labels */
+            labels: {
+                [key: string]: number;
+            };
+            /**
+             * Retune
+             * @description What the retune measured on its label holdout. Null for round 0.
+             */
+            retune?: {
+                [key: string]: unknown;
+            } | null;
+            /** Round */
+            round: number;
+            /**
+             * Truth
+             * @description Judged on held-out records against ground truth.
+             */
+            truth: {
+                [key: string]: unknown;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1555,6 +1717,48 @@ export interface components {
             strategy: string;
             /** Wrong Provider */
             wrong_provider: number | null;
+        };
+        /** LabFeedbackIn */
+        LabFeedbackIn: {
+            /**
+             * Base Level
+             * @description Corruption the starting config is fitted at. Omitted: 0.3.
+             */
+            base_level?: number | null;
+            /**
+             * Level
+             * @description Corruption of the data it is deployed on. Omitted: 0.7.
+             */
+            level?: number | null;
+            /**
+             * Noise
+             * @description Share of labels the simulated reviewer gets wrong. Omitted: 0.03.
+             */
+            noise?: number | null;
+            /**
+             * Per Round
+             * @description Labels per round. Omitted: 200.
+             */
+            per_round?: number | null;
+            /**
+             * Rounds
+             * @description Omitted: 5.
+             */
+            rounds?: number | null;
+            /**
+             * Sweep Id
+             * @description The sweep whose datasets to use. Omitted: the newest completed one.
+             */
+            sweep_id?: string | null;
+        };
+        /** LabFeedbackOut */
+        LabFeedbackOut: {
+            /** @description Whichever Lab experiment is queued or running now. */
+            live: components["schemas"]["LabRunOut"] | null;
+            /** Rounds */
+            rounds: components["schemas"]["FeedbackRoundOut"][];
+            /** @description The newest completed feedback experiment. */
+            run: components["schemas"]["LabRunOut"] | null;
         };
         /** LabLlmIn */
         LabLlmIn: {
@@ -2373,6 +2577,41 @@ export interface components {
             /** Upper */
             upper: number;
         };
+        /** RetuneIn */
+        RetuneIn: {
+            /**
+             * Activate
+             * @description Activate the new version at once. Omitted: propose only.
+             * @default false
+             */
+            activate?: boolean;
+            /**
+             * Run Id
+             * @description The run whose candidate-pair tally to fit on. Omitted: the newest with one.
+             */
+            run_id?: string | null;
+        };
+        /** RetuneOut */
+        RetuneOut: {
+            /** Activated */
+            activated: boolean;
+            config: components["schemas"]["ScoringConfigOut"];
+            /**
+             * Improved
+             * @description Whether holdout precision beat the parent's on the same labels. Null when either config auto-accepted nothing there.
+             */
+            improved: boolean | null;
+            /**
+             * Recommended
+             * @description Whether the holdout comparison says activating it is an improvement.
+             */
+            recommended: boolean;
+            /**
+             * Verdict
+             * @description Why, in one line, for the person deciding.
+             */
+            verdict: string;
+        };
         /** ReviewIn */
         ReviewIn: {
             /** Comment */
@@ -2626,6 +2865,51 @@ export interface components {
             state: string | null;
             /** Zip */
             zip: string | null;
+        };
+        /**
+         * ScoringConfigOut
+         * @description One config version, with its lineage and what it measured when written.
+         */
+        ScoringConfigOut: {
+            /** Active */
+            active: boolean;
+            /** Created By */
+            created_by: string | null;
+            /**
+             * Fitted At
+             * Format: date-time
+             */
+            fitted_at: string;
+            /** Fitted From */
+            fitted_from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latest Run At */
+            latest_run_at: string | null;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** Notes */
+            notes: string | null;
+            /** Parent Id */
+            parent_id: string | null;
+            /** Parent Version */
+            parent_version: string | null;
+            /**
+             * Runs
+             * @description Reconciliation runs that scored with this config.
+             */
+            runs: number;
+            /** T Auto Accept */
+            t_auto_accept: number;
+            /** T Auto Reject */
+            t_auto_reject: number;
+            /** Version */
+            version: string;
         };
         /** TokenOut */
         TokenOut: {
@@ -3261,6 +3545,73 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LabRunOut"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feedback_lab_feedback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabFeedbackOut"];
+                };
+            };
+        };
+    };
+    request_feedback_lab_feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabFeedbackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabRunOut"];
+                };
+            };
+            /** @description No completed sweep to take datasets from. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another experiment is live. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4069,6 +4420,137 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SanctionRecordDetailOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_configs_scoring_configs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringConfigOut"][];
+                };
+            };
+        };
+    };
+    activations_scoring_configs_activations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigActivationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retune_scoring_configs_retune_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetuneIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetuneOut"];
+                };
+            };
+            /** @description No active config, or no run with a pair tally yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not enough labels: fewer than RETUNE_MIN_LABELS, or one class only. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    activate_scoring_configs__config_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringConfigOut"];
+                };
+            };
+            /** @description Already the active config. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

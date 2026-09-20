@@ -805,6 +805,101 @@ class LabResultsOut(ApiModel):
     llm_enabled: bool
 
 
+class LabFeedbackIn(ApiModel):
+    sweep_id: uuid.UUID | None = Field(
+        default=None, description="The sweep whose datasets to use. Omitted: the newest completed one."
+    )
+    base_level: float | None = Field(
+        default=None, ge=0.0, le=0.9, description="Corruption the starting config is fitted at. Omitted: 0.3."
+    )
+    level: float | None = Field(
+        default=None, ge=0.0, le=0.9, description="Corruption of the data it is deployed on. Omitted: 0.7."
+    )
+    rounds: int | None = Field(default=None, ge=1, le=10, description="Omitted: 5.")
+    per_round: int | None = Field(default=None, ge=20, le=2_000, description="Labels per round. Omitted: 200.")
+    noise: float | None = Field(
+        default=None, ge=0.0, le=0.3, description="Share of labels the simulated reviewer gets wrong. Omitted: 0.03."
+    )
+
+
+class FeedbackRoundOut(ApiModel):
+    """One simulated review round: the labels so far, and the config they produced."""
+
+    round: int
+    config_id: str
+    labels: dict[str, int]
+    truth: dict[str, Any] = Field(description="Judged on held-out records against ground truth.")
+    retune: dict[str, Any] | None = Field(
+        default=None, description="What the retune measured on its label holdout. Null for round 0."
+    )
+
+
+class LabFeedbackOut(ApiModel):
+    run: LabRunOut | None = Field(description="The newest completed feedback experiment.")
+    live: LabRunOut | None = Field(description="Whichever Lab experiment is queued or running now.")
+    rounds: list[FeedbackRoundOut]
+
+
+# --------------------------------------------------------------------------
+# scoring configs and the feedback loop
+# --------------------------------------------------------------------------
+
+
+class ScoringConfigOut(ApiModel):
+    """One config version, with its lineage and what it measured when written."""
+
+    id: uuid.UUID
+    version: str
+    fitted_from: str
+    fitted_at: datetime
+    parent_id: uuid.UUID | None
+    parent_version: str | None
+    t_auto_accept: float
+    t_auto_reject: float
+    metrics: dict[str, Any]
+    notes: str | None
+    created_by: uuid.UUID | None
+    active: bool
+    runs: int = Field(description="Reconciliation runs that scored with this config.")
+    latest_run_at: datetime | None
+
+
+class RetuneIn(ApiModel):
+    run_id: uuid.UUID | None = Field(
+        default=None,
+        description="The run whose candidate-pair tally to fit on. Omitted: the newest with one.",
+    )
+    activate: bool = Field(
+        default=False, description="Activate the new version at once. Omitted: propose only."
+    )
+
+
+class RetuneOut(ApiModel):
+    config: ScoringConfigOut
+    improved: bool | None = Field(
+        description="Whether holdout precision beat the parent's on the same labels. Null when "
+        "either config auto-accepted nothing there."
+    )
+    recommended: bool = Field(
+        description="Whether the holdout comparison says activating it is an improvement."
+    )
+    verdict: str = Field(description="Why, in one line, for the person deciding.")
+    activated: bool
+
+
+class ActivateIn(ApiModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ConfigActivationOut(ApiModel):
+    id: int
+    scoring_config_id: uuid.UUID
+    version: str
+    activated_by: uuid.UUID | None
+    reason: str | None
+    created_at: datetime
+
+
 MatchDetailOut.model_rebuild()
 BulkItemOut.model_rebuild()
 

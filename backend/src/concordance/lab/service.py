@@ -1,6 +1,6 @@
 """Requesting, running and reading Lab experiments.
 
-Two kinds, one table (`lab_sweeps`), and the same shape as a reconciliation
+Three kinds, one table (`lab_sweeps`), and the same shape as a reconciliation
 run: the row exists in `QUEUED` before any work starts, a job names it, and the
 worker adopts the row rather than creating its own - so the id a page polls is
 the id that ends up holding the results.
@@ -12,8 +12,12 @@ the id that ends up holding the results.
   calls, so it is a separate experiment rather than a phase of the sweep: a
   sweep should not take an hour because a free tier is busy, and an LLM run
   that stops half-way is resumed from the response cache for free.
+- **feedback** - simulated review rounds (`learning.simulate`): a config fitted
+  at one level of a finished sweep meets the dataset at another, and a noisy
+  simulated reviewer labels, retunes and rescores it round after round. The
+  rounds are kept on the row's `summary`; the Models page draws them.
 
-**One live experiment at a time**, across both kinds. A sweep holds four
+**One live experiment at a time**, across every kind. A sweep holds four
 50,000-provider indexes in memory and an LLM run holds a provider's rate limit;
 running two of either at once only makes both slower.
 
@@ -55,6 +59,8 @@ SWEEP_STRATEGIES: tuple[str, ...] = (
 DEFAULT_LEVELS: tuple[float, ...] = tuple(round(i / 10, 1) for i in range(10))
 DEFAULT_LLM_LEVELS: tuple[float, ...] = (0.3, 0.5, 0.7)
 DEFAULT_LLM_SAMPLE = 100
+#: Simulated review rounds: fitted at one level, deployed at a messier one.
+DEFAULT_FEEDBACK = {"base_level": 0.3, "level": 0.7, "rounds": 5, "per_round": 200, "noise": 0.03}
 #: A jobless experiment silent for this long is treated as dead. See `effective_status`.
 STALE_AFTER = timedelta(minutes=30)
 
@@ -177,6 +183,58 @@ def request_llm(
         "chain": settings.LLM_PROVIDER_CHAIN,
     }
     return _queue(session, actor, LabKind.LLM, params, parent_id=parent.id, enqueue=enqueue)
+
+
+def request_feedback(
+    session: Session,
+    settings: Settings,
+    actor: Actor,
+    *,
+    sweep_id: uuid.UUID | None = None,
+    base_level: float | None = None,
+    level: float | None = None,
+    rounds: int | None = None,
+    per_round: int | None = None,
+    noise: float | None = None,
+    enqueue: bool = True,
+) -> LabSweep:
+    """Queue simulated review rounds on a finished sweep's datasets. The caller commits."""
+    _refuse_if_live(session)
+    parent = (
+        session.get(LabSweep, sweep_id)
+        if sweep_id is not None
+        else latest(session, LabKind.SWEEP, completed=True)
+    )
+    if parent is None or parent.kind != LabKind.SWEEP:
+        raise NotFoundError("no finished sweep to take datasets from; run a sweep first")
+    if parent.status != RunStatus.COMPLETED:
+        raise ConflictError(
+            f"sweep {parent.id} is {parent.status.lower()}, not completed",
+            details={"sweep_id": str(parent.id)},
+        )
+    params: dict[str, Any] = {
+        "base_level": round(float(DEFAULT_FEEDBACK["base_level"] if base_level is None else base_level), 1),
+        "level": round(float(DEFAULT_FEEDBACK["level"] if level is None else level), 1),
+        "rounds": int(rounds or DEFAULT_FEEDBACK["rounds"]),
+        "per_round": int(per_round or DEFAULT_FEEDBACK["per_round"]),
+        "noise": float(DEFAULT_FEEDBACK["noise"] if noise is None else noise),
+        "audit_rate": settings.AUDIT_RATE,
+        "min_labels": settings.RETUNE_MIN_LABELS,
+        "target_precision": settings.TARGET_PRECISION,
+    }
+    measured = parent.params.get("levels", [])
+    missing = [v for v in (params["base_level"], params["level"]) if v not in measured]
+    if missing:
+        raise InvalidError(
+            "the sweep did not generate a dataset at every requested level",
+            details={"levels": f"not in the sweep: {missing}"},
+        )
+    if params["audit_rate"] <= 0:
+        raise InvalidError(
+            "AUDIT_RATE is 0, so the simulated reviewer could never label an auto-reject",
+            details={"audit_rate": "0"},
+        )
+    return _queue(session, actor, LabKind.FEEDBACK, params, parent_id=parent.id, enqueue=enqueue)
 
 
 def _queue(
@@ -425,6 +483,88 @@ def run_llm(session: Session, settings: Settings, lab_id: uuid.UUID) -> dict[str
         _fail(session, lab_id, exc)
         raise
     return {"lab_id": str(lab_id), "levels": written}
+
+
+def run_feedback(
+    session: Session,
+    settings: Settings,  # noqa: ARG001 - the handler signature; params are on the row
+    lab_id: uuid.UUID,
+) -> dict[str, Any]:
+    from concordance.eval.fitting import fit_config
+    from concordance.eval.pairs import prepare
+    from concordance.eval.sweep import _dataset_dir, _reusable
+    from concordance.learning.simulate import simulate_rounds
+    from concordance.synth.pipeline import seed_dataset
+
+    row = _adopt(session, lab_id, LabKind.FEEDBACK)
+    params = dict(row.params)
+    parent = session.get(LabSweep, row.parent_id) if row.parent_id else None
+    started = time.perf_counter()
+    try:
+        if parent is None:
+            raise NotFoundError("the sweep this experiment uses no longer exists")
+        base = dict(parent.params)
+        seed = int(base["seed"])
+        rounds = int(params["rounds"])
+
+        def dataset_at(level: float) -> Any:
+            directory = _dataset_dir(Path(base["root"]), level)
+            if not _reusable(directory, seed, level, int(base["providers"]), int(base["sanctions"])):
+                seed_dataset(
+                    providers=int(base["providers"]),
+                    sanctions=int(base["sanctions"]),
+                    corruption=level,
+                    seed=seed,
+                    out_dir=directory,
+                    write_excel=False,
+                )
+            return prepare(directory, max_candidates=int(base["max_candidates"]), show_progress=False)
+
+        _progress(session, row, {"done": 0, "total": rounds, "stage": "fitting the starting config"})
+        start = fit_config(
+            dataset_at(float(params["base_level"])),
+            seed=seed,
+            target_precision=float(params["target_precision"]),
+        ).config
+        _progress(session, row, {"done": 0, "total": rounds, "stage": "preparing the dataset"})
+        target = dataset_at(float(params["level"]))
+
+        def on_round(round_no: int, _row: dict[str, Any]) -> None:
+            _progress(session, row, {"done": round_no, "total": rounds, "stage": "reviewing"})
+
+        result = simulate_rounds(
+            target,
+            start,
+            seed=seed,
+            target_precision=float(params["target_precision"]),
+            rounds=rounds,
+            per_round=int(params["per_round"]),
+            noise=float(params["noise"]),
+            audit_rate=float(params["audit_rate"]),
+            min_labels=int(params["min_labels"]),
+            on_round=on_round,
+        )
+        row.status = str(RunStatus.COMPLETED)
+        row.finished_at = datetime.now(UTC)
+        row.summary = {
+            "seconds": round(time.perf_counter() - started, 1),
+            "rounds": result["rounds"],
+            "records": result["records"],
+            "start_config": start.config_id,
+        }
+        session.commit()
+    except Exception as exc:
+        _fail(session, lab_id, exc)
+        raise
+    return {"lab_id": str(lab_id), "rounds": rounds}
+
+
+def feedback_results(session: Session) -> dict[str, Any]:
+    """The newest completed feedback experiment, and whichever is live."""
+    return {
+        "run": latest(session, LabKind.FEEDBACK, completed=True),
+        "live": _live(session),
+    }
 
 
 def _eval_row(cell: dict[str, Any], sweep_id: uuid.UUID) -> EvalRun:

@@ -127,4 +127,50 @@ def llm(
     return out
 
 
+@router.get("/feedback", response_model=schemas.LabFeedbackOut)
+def feedback(session: SessionDep, _user: CurrentUser) -> schemas.LabFeedbackOut:
+    """The newest simulated review rounds: precision and recall, round by round."""
+    found = service.feedback_results(session)
+    run = found["run"]
+    rounds = (run.summary or {}).get("rounds", []) if run is not None else []
+    return schemas.LabFeedbackOut(
+        run=_run_out(session, run),
+        live=_run_out(session, found["live"]),
+        rounds=[schemas.FeedbackRoundOut.model_validate(r) for r in rounds],
+    )
+
+
+@router.post(
+    "/feedback",
+    response_model=schemas.LabRunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        404: {"description": "No completed sweep to take datasets from."},
+        409: {"description": "Another experiment is live."},
+    },
+)
+def request_feedback(
+    body: schemas.LabFeedbackIn,
+    session: SessionDep,
+    settings: SettingsDep,
+    actor: AdminActor,
+) -> schemas.LabRunOut:
+    """Queue simulated review rounds on a finished sweep's datasets. Admin only."""
+    row = service.request_feedback(
+        session,
+        settings,
+        actor,
+        sweep_id=body.sweep_id,
+        base_level=body.base_level,
+        level=body.level,
+        rounds=body.rounds,
+        per_round=body.per_round,
+        noise=body.noise,
+    )
+    session.commit()
+    out = _run_out(session, row)
+    assert out is not None
+    return out
+
+
 __all__ = ["router"]

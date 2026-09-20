@@ -36,8 +36,11 @@ run_app = typer.Typer(
 jobs_app = typer.Typer(help="The job queue and the worker.", no_args_is_help=True)
 api_app = typer.Typer(help="The HTTP API: serve it, or export its contract.", no_args_is_help=True)
 lab_app = typer.Typer(
-    help="The Lab: robustness sweeps and the LLM cost experiment, stored for the UI.",
+    help="The Lab: robustness sweeps, the LLM cost experiment and simulated review rounds.",
     no_args_is_help=True,
+)
+configs_app = typer.Typer(
+    help="Scoring config versions: list them, activate one.", no_args_is_help=True
 )
 
 app.add_typer(data_app, name="data")
@@ -49,6 +52,7 @@ app.add_typer(report_app, name="report")
 app.add_typer(run_app, name="run")
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(lab_app, name="lab")
+app.add_typer(configs_app, name="configs")
 
 log = get_logger("cli")
 
@@ -1093,7 +1097,7 @@ def jobs_worker(
 
 @jobs_app.command("enqueue")
 def jobs_enqueue(
-    kind: Annotated[str, typer.Argument(help="reconcile | eval | sweep | retune | expire_cases")],
+    kind: Annotated[str, typer.Argument(help="reconcile | eval | sweep | refit | retune | expire_cases")],
     payload: Annotated[
         str | None, typer.Option("--payload", help="JSON object passed to the handler.")
     ] = None,
@@ -1311,7 +1315,11 @@ def _lab(kind: str, queue: bool, request: Any) -> None:
     if queue:
         typer.secho("start a worker with 'concordance jobs worker' to run it", fg="green")
         return
-    run = service.run_sweep if kind == "sweep" else service.run_llm
+    run = {
+        "sweep": service.run_sweep,
+        "llm": service.run_llm,
+        "feedback": service.run_feedback,
+    }[kind]
     with session_scope(settings) as session:
         summary = run(session, settings, lab_id)
     for key, value in summary.items():
@@ -1363,6 +1371,157 @@ def lab_llm(
             session, settings, actor, levels=_parse_levels(levels), sample=sample, enqueue=enqueue
         ),
     )
+
+
+@lab_app.command("feedback")
+def lab_feedback(
+    base_level: Annotated[
+        float | None, typer.Option("--base-level", help="Starting config fitted here; default 0.3.")
+    ] = None,
+    level: Annotated[
+        float | None, typer.Option("--level", help="Deployed on this level; default 0.7.")
+    ] = None,
+    rounds: Annotated[int | None, typer.Option("--rounds", help="Default 5.")] = None,
+    per_round: Annotated[
+        int | None, typer.Option("--per-round", help="Labels per round; default 200.")
+    ] = None,
+    noise: Annotated[
+        float | None, typer.Option("--noise", help="Reviewer error rate; default 0.03.")
+    ] = None,
+    queue: QueueOpt = False,
+) -> None:
+    """Simulated review rounds on the newest sweep: label, retune, rescore, repeat."""
+    from concordance.lab import service
+
+    _lab(
+        "feedback",
+        queue,
+        lambda session, settings, actor, enqueue: service.request_feedback(
+            session,
+            settings,
+            actor,
+            base_level=base_level,
+            level=level,
+            rounds=rounds,
+            per_round=per_round,
+            noise=noise,
+            enqueue=enqueue,
+        ),
+    )
+
+
+# --------------------------------------------------------------------------
+# the feedback loop
+# --------------------------------------------------------------------------
+
+
+@app.command("retune")
+def retune(
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run", help="Fit on this run's pair tally; default the newest with one."),
+    ] = None,
+    activate: Annotated[
+        bool, typer.Option("--activate", help="Activate the new version at once.")
+    ] = False,
+) -> None:
+    """Retune the active config on every reviewer label so far (semi-supervised)."""
+    import uuid
+
+    from concordance.audit.service import Actor
+    from concordance.db.session import session_scope
+    from concordance.errors import DomainError
+    from concordance.learning.service import retune_active
+
+    settings, _ = start(None, echo_config=False)
+    try:
+        with session_scope(settings) as session:
+            done = retune_active(
+                session,
+                settings,
+                Actor.system(),
+                run_id=uuid.UUID(run_id) if run_id else None,
+                activate=activate,
+            )
+            version = done.row.version
+            metrics = done.result.metrics
+            recommended = done.result.recommended
+            verdict = done.result.verdict
+    except DomainError as exc:
+        typer.secho(exc.message, fg="red")
+        for key, value in exc.details.items():
+            typer.echo(f"  {key}: {value}")
+        raise typer.Exit(code=1) from exc
+
+    labels = metrics["labels"]
+    typer.echo(f"version     {version}  (parent {metrics['parent']})")
+    typer.echo(
+        f"labels      {labels['total']}  true {labels['positives']}  false {labels['negatives']}  "
+        f"audit {labels['audit']}  voluntary {labels['voluntary']}"
+    )
+    for kind, report in metrics["models"].items():
+        if report.get("refit"):
+            typer.echo(
+                f"{kind:<12}refit on {report['fit']} labels  lambda {report['parent_lam']} -> "
+                f"{report['lam']}  accept>={report['t_auto_accept']} reject<{report['t_auto_reject']}"
+            )
+        else:
+            typer.echo(f"{kind:<12}kept: {report['reason']}")
+    for name in ("parent", "new"):
+        h = metrics["holdout"][name]
+        typer.echo(
+            f"holdout {name:<6} precision {h['precision']}  recall {h['recall']}  "
+            f"missed {h['missed']}  review {h['review_share']}  (n={h['n']})"
+        )
+    typer.secho(
+        f"{'activate' if recommended else 'keep the parent'}: {verdict}",
+        fg="green" if recommended else "yellow",
+    )
+    typer.echo("activated" if activate else f"activate anyway with: concordance configs activate {version}")
+
+
+@configs_app.command("list")
+def configs_list() -> None:
+    """Every version, newest first, with lineage and the active flag."""
+    from concordance.db.session import session_scope
+    from concordance.learning.service import config_summaries
+
+    settings, _ = start(None, echo_config=False)
+    with session_scope(settings) as session:
+        rows = config_summaries(session)
+    for r in rows:
+        flag = "*" if r["active"] else " "
+        parent = f"<- {r['parent_version']}" if r["parent_version"] else ""
+        typer.echo(
+            f"{flag} {r['version']:<36} {r['fitted_from']:<16} runs {r['runs']:<4} "
+            f"accept>={r['t_auto_accept']:.4f} {parent}"
+        )
+
+
+@configs_app.command("activate")
+def configs_activate(
+    version: Annotated[str, typer.Argument(help="The version to make active.")],
+    reason: Annotated[str | None, typer.Option("--reason")] = None,
+) -> None:
+    """Make a version the one new runs score with. Audited."""
+    from concordance.audit.service import Actor
+    from concordance.db.repositories.configs import ConfigRepository
+    from concordance.db.session import session_scope
+    from concordance.errors import DomainError
+    from concordance.learning.service import activate_config
+
+    settings, _ = start(None, echo_config=False)
+    try:
+        with session_scope(settings) as session:
+            row = ConfigRepository(session).by_version(version)
+            if row is None:
+                typer.secho(f"no scoring config {version!r}", fg="red")
+                raise typer.Exit(code=1)
+            activate_config(session, Actor.system(), row.id, reason=reason or "activated from the CLI")
+    except DomainError as exc:
+        typer.secho(exc.message, fg="red")
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"{version} is now the active config", fg="green")
 
 
 def main() -> None:

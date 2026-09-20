@@ -1,6 +1,25 @@
 {
   "components": {
     "schemas": {
+      "ActivateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "ActivateIn",
+        "type": "object"
+      },
       "AdjudicationOut": {
         "additionalProperties": false,
         "description": "What the adjudicator said, after the same checks the pipeline ran on it.\n\n`evidence_cited` entries are `provider_id.field` - each names a field of a\ncandidate the model was shown, which the Investigation page highlights.",
@@ -1459,6 +1478,62 @@
         "title": "CommitOut",
         "type": "object"
       },
+      "ConfigActivationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "activated_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated By"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "scoring_config_id": {
+            "format": "uuid",
+            "title": "Scoring Config Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scoring_config_id",
+          "version",
+          "activated_by",
+          "reason",
+          "created_at"
+        ],
+        "title": "ConfigActivationOut",
+        "type": "object"
+      },
       "ErrorBodyOut": {
         "additionalProperties": false,
         "properties": {
@@ -1522,6 +1597,54 @@
           "states"
         ],
         "title": "FacetsOut",
+        "type": "object"
+      },
+      "FeedbackRoundOut": {
+        "additionalProperties": false,
+        "description": "One simulated review round: the labels so far, and the config they produced.",
+        "properties": {
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "retune": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the retune measured on its label holdout. Null for round 0.",
+            "title": "Retune"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "truth": {
+            "additionalProperties": true,
+            "description": "Judged on held-out records against ground truth.",
+            "title": "Truth",
+            "type": "object"
+          }
+        },
+        "required": [
+          "round",
+          "config_id",
+          "labels",
+          "truth"
+        ],
+        "title": "FeedbackRoundOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2026,6 +2149,137 @@
           "scenarios"
         ],
         "title": "LabCellOut",
+        "type": "object"
+      },
+      "LabFeedbackIn": {
+        "additionalProperties": false,
+        "properties": {
+          "base_level": {
+            "anyOf": [
+              {
+                "maximum": 0.9,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corruption the starting config is fitted at. Omitted: 0.3.",
+            "title": "Base Level"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "maximum": 0.9,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corruption of the data it is deployed on. Omitted: 0.7.",
+            "title": "Level"
+          },
+          "noise": {
+            "anyOf": [
+              {
+                "maximum": 0.3,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of labels the simulated reviewer gets wrong. Omitted: 0.03.",
+            "title": "Noise"
+          },
+          "per_round": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 20.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Labels per round. Omitted: 200.",
+            "title": "Per Round"
+          },
+          "rounds": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omitted: 5.",
+            "title": "Rounds"
+          },
+          "sweep_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The sweep whose datasets to use. Omitted: the newest completed one.",
+            "title": "Sweep Id"
+          }
+        },
+        "title": "LabFeedbackIn",
+        "type": "object"
+      },
+      "LabFeedbackOut": {
+        "additionalProperties": false,
+        "properties": {
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whichever Lab experiment is queued or running now."
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackRoundOut"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest completed feedback experiment."
+          }
+        },
+        "required": [
+          "run",
+          "live",
+          "rounds"
+        ],
+        "title": "LabFeedbackOut",
         "type": "object"
       },
       "LabLlmIn": {
@@ -4705,6 +4959,75 @@
         "title": "ReliabilityBinOut",
         "type": "object"
       },
+      "RetuneIn": {
+        "additionalProperties": false,
+        "properties": {
+          "activate": {
+            "default": false,
+            "description": "Activate the new version at once. Omitted: propose only.",
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run whose candidate-pair tally to fit on. Omitted: the newest with one.",
+            "title": "Run Id"
+          }
+        },
+        "title": "RetuneIn",
+        "type": "object"
+      },
+      "RetuneOut": {
+        "additionalProperties": false,
+        "properties": {
+          "activated": {
+            "title": "Activated",
+            "type": "boolean"
+          },
+          "config": {
+            "$ref": "#/components/schemas/ScoringConfigOut"
+          },
+          "improved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether holdout precision beat the parent's on the same labels. Null when either config auto-accepted nothing there.",
+            "title": "Improved"
+          },
+          "recommended": {
+            "description": "Whether the holdout comparison says activating it is an improvement.",
+            "title": "Recommended",
+            "type": "boolean"
+          },
+          "verdict": {
+            "description": "Why, in one line, for the person deciding.",
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config",
+          "improved",
+          "recommended",
+          "verdict",
+          "activated"
+        ],
+        "title": "RetuneOut",
+        "type": "object"
+      },
       "ReviewIn": {
         "additionalProperties": false,
         "properties": {
@@ -5704,6 +6027,128 @@
           "reinstatement_date"
         ],
         "title": "SanctionRecordOut",
+        "type": "object"
+      },
+      "ScoringConfigOut": {
+        "additionalProperties": false,
+        "description": "One config version, with its lineage and what it measured when written.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "fitted_at": {
+            "format": "date-time",
+            "title": "Fitted At",
+            "type": "string"
+          },
+          "fitted_from": {
+            "title": "Fitted From",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run At"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "parent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Version"
+          },
+          "runs": {
+            "description": "Reconciliation runs that scored with this config.",
+            "title": "Runs",
+            "type": "integer"
+          },
+          "t_auto_accept": {
+            "title": "T Auto Accept",
+            "type": "number"
+          },
+          "t_auto_reject": {
+            "title": "T Auto Reject",
+            "type": "number"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "fitted_from",
+          "fitted_at",
+          "parent_id",
+          "parent_version",
+          "t_auto_accept",
+          "t_auto_reject",
+          "metrics",
+          "notes",
+          "created_by",
+          "active",
+          "runs",
+          "latest_run_at"
+        ],
+        "title": "ScoringConfigOut",
         "type": "object"
       },
       "TokenOut": {
@@ -6936,6 +7381,84 @@
           }
         ],
         "summary": "Experiments",
+        "tags": [
+          "lab"
+        ]
+      }
+    },
+    "/lab/feedback": {
+      "get": {
+        "description": "The newest simulated review rounds: precision and recall, round by round.",
+        "operationId": "feedback_lab_feedback_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabFeedbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Feedback",
+        "tags": [
+          "lab"
+        ]
+      },
+      "post": {
+        "description": "Queue simulated review rounds on a finished sweep's datasets. Admin only.",
+        "operationId": "request_feedback_lab_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabFeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No completed sweep to take datasets from."
+          },
+          "409": {
+            "description": "Another experiment is live."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Request Feedback",
         "tags": [
           "lab"
         ]
@@ -8670,6 +9193,197 @@
         "summary": "Get Record",
         "tags": [
           "sanctions"
+        ]
+      }
+    },
+    "/scoring-configs": {
+      "get": {
+        "description": "Every version, newest first, with lineage, metrics, run counts and the active flag.",
+        "operationId": "list_configs_scoring_configs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScoringConfigOut"
+                  },
+                  "title": "Response List Configs Scoring Configs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Configs",
+        "tags": [
+          "scoring-configs"
+        ]
+      }
+    },
+    "/scoring-configs/activations": {
+      "get": {
+        "description": "Which config was live when, newest first, and who switched it.",
+        "operationId": "activations_scoring_configs_activations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigActivationOut"
+                  },
+                  "title": "Response Activations Scoring Configs Activations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Activations",
+        "tags": [
+          "scoring-configs"
+        ]
+      }
+    },
+    "/scoring-configs/retune": {
+      "post": {
+        "description": "Retune the active config on every reviewer label so far. Admin only.\n\nWrites a new version whose parent is the active one; never edits either.\nTakes seconds - the fit runs over a run's distinct comparison vectors, not\nits pairs - so it answers directly rather than through a job.",
+        "operationId": "retune_scoring_configs_retune_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetuneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetuneOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "No active config, or no run with a pair tally yet."
+          },
+          "422": {
+            "description": "Not enough labels: fewer than RETUNE_MIN_LABELS, or one class only."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retune",
+        "tags": [
+          "scoring-configs"
+        ]
+      }
+    },
+    "/scoring-configs/{config_id}/activate": {
+      "post": {
+        "description": "Make a version the one new runs score with. Admin only; audited.",
+        "operationId": "activate_scoring_configs__config_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoringConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Already the active config."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Activate",
+        "tags": [
+          "scoring-configs"
         ]
       }
     },

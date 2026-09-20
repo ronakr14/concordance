@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     #: `concordance retune` refuses to fit on fewer labelled pairs than this,
     #: or on fewer than a tenth of it of either class.
     RETUNE_MIN_LABELS: int = Field(default=100, ge=10, le=100_000)
+    #: The share of reviewer verdicts that are wrong - what a QA re-review of
+    #: a sample overturns. Retuning de-noises labels by it; see
+    #: `learning/retune.py` for why ignoring it collapses recall.
+    REVIEWER_ERROR_RATE: float = Field(default=0.02, ge=0.0, lt=0.5)
 
     # --- reserved for later stages; optional until then --------------------
     DATABASE_URL: str | None = None  # Stage 5

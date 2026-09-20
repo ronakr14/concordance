@@ -33,6 +33,21 @@ violators is about thirty lines, and owning it means the calibrator serializes
 to a list of knots that any language can apply, instead of to a pickle that
 only this version of this library can load. Applying a calibrator at inference
 is then a pure function of stored numbers, with no refit and no dependency.
+
+**Weights** are optional everywhere and change nothing when omitted. They exist
+for reviewer labels (Stage 9), which are not a uniform sample: every accepted
+and grey-band result reaches a reviewer, but only a small random audit of the
+auto-rejects does. A label drawn with probability pi stands for 1/pi records
+like it, and the precision a threshold achieves is a statement about records,
+not about labels - so the fit, the reliability metrics and the threshold search
+all count each label at its weight.
+
+**Labels may be fractional.** A reviewer who is wrong at rate epsilon produces
+labels whose sums are biased: a set of true matches reads as 1 - epsilon of
+them. `denoise` turns each verdict into (y - epsilon) / (1 - 2 epsilon), whose
+sum over any set is an unbiased estimate of the true count, so precision,
+recall and the isotonic fit all come out in true-label terms. Individual values
+fall slightly outside [0, 1]; the fitted calibrator is clipped back into it.
 """
 
 from __future__ import annotations
@@ -121,7 +136,10 @@ class CalibrationMetrics:
 
 
 def reliability(
-    predicted: Sequence[float], actual: Sequence[int], bins: int = DEFAULT_BINS
+    predicted: Sequence[float],
+    actual: Sequence[float],
+    bins: int = DEFAULT_BINS,
+    weights: Sequence[float] | None = None,
 ) -> CalibrationMetrics:
     """Reliability bins, Expected Calibration Error and Brier score.
 
@@ -136,32 +154,42 @@ def reliability(
     if n == 0:
         return CalibrationMetrics(0, 0.0, 0.0, 0.0, ())
 
+    w = list(weights) if weights is not None else [1.0] * n
+    if len(w) != n:
+        raise ValueError("weights must match predicted in length")
+    total_weight = sum(w) or 1.0
+
     edges = [i / bins for i in range(bins + 1)]
     sums = [0.0] * bins
-    hits = [0] * bins
+    hits = [0.0] * bins
+    mass = [0.0] * bins
     counts = [0] * bins
-    for p, y in zip(predicted, actual, strict=True):
+    for p, y, wi in zip(predicted, actual, w, strict=True):
         # The top edge belongs to the last bin rather than opening an 11th.
         index = min(max(int(p * bins), 0), bins - 1)
-        sums[index] += p
-        hits[index] += y
+        sums[index] += wi * p
+        hits[index] += wi * y
+        mass[index] += wi
         counts[index] += 1
 
     out: list[ReliabilityBin] = []
     ece = 0.0
     mce = 0.0
     for i in range(bins):
-        if not counts[i]:
-            out.append(ReliabilityBin(edges[i], edges[i + 1], 0, 0.0, 0.0))
+        if not counts[i] or mass[i] <= 0:
+            out.append(ReliabilityBin(edges[i], edges[i + 1], counts[i], 0.0, 0.0))
             continue
-        mean_p = sums[i] / counts[i]
-        observed = hits[i] / counts[i]
+        mean_p = sums[i] / mass[i]
+        observed = hits[i] / mass[i]
         gap = abs(mean_p - observed)
-        ece += (counts[i] / n) * gap
+        ece += (mass[i] / total_weight) * gap
         mce = max(mce, gap)
         out.append(ReliabilityBin(edges[i], edges[i + 1], counts[i], mean_p, observed))
 
-    brier = sum((p - y) ** 2 for p, y in zip(predicted, actual, strict=True)) / n
+    brier = (
+        sum(wi * (p - y) ** 2 for p, y, wi in zip(predicted, actual, w, strict=True))
+        / total_weight
+    )
     return CalibrationMetrics(n, ece, mce, brier, tuple(out))
 
 
@@ -231,7 +259,10 @@ class IsotonicCalibrator:
 
 
 def fit_isotonic(
-    predicted: Sequence[float], actual: Sequence[int], resolution: float | None = None
+    predicted: Sequence[float],
+    actual: Sequence[float],
+    resolution: float | None = None,
+    weights: Sequence[float] | None = None,
 ) -> IsotonicCalibrator:
     """Pool-adjacent-violators, on points sorted by predicted score.
 
@@ -252,18 +283,27 @@ def fit_isotonic(
 
     if resolution:
         predicted = [round(p / resolution) * resolution for p in predicted]
-    points = sorted(zip(predicted, actual, strict=True), key=lambda t: (t[0], t[1]))
-    # Blocks of (sum of y, weight, x at the right edge). Adjacent blocks that
-    # violate monotonicity are pooled until none do.
+    w = list(weights) if weights is not None else [1.0] * len(predicted)
+    points = sorted(zip(predicted, actual, w, strict=True), key=lambda t: (t[0], t[1]))
+    # Blocks of (weighted sum of y, weight, x at the right edge). Adjacent
+    # blocks that violate monotonicity are pooled until none do.
     blocks: list[list[float]] = []
-    for p, y in points:
-        blocks.append([float(y), 1.0, float(p)])
+    for p, y, wi in points:
+        if wi <= 0:
+            continue
+        blocks.append([float(y) * wi, float(wi), float(p)])
         while len(blocks) > 1 and blocks[-2][0] / blocks[-2][1] > blocks[-1][0] / blocks[-1][1]:
             total, weight, right = blocks.pop()
             blocks[-1][0] += total
             blocks[-1][1] += weight
             blocks[-1][2] = right
 
+    if not blocks:
+        return IsotonicCalibrator.identity()
+    # De-noised labels can pool to a block mean a hair outside [0, 1]; a
+    # probability cannot. Clipping a non-decreasing sequence keeps it so.
+    for block in blocks:
+        block[0] = min(max(block[0] / block[1], 0.0), 1.0) * block[1]
     xs: list[float] = []
     ys: list[float] = []
     left = points[0][0]
@@ -338,9 +378,10 @@ class Thresholds:
 
 def choose_thresholds(
     confidence: Sequence[float],
-    actual: Sequence[int],
+    actual: Sequence[float],
     target_precision: float = 0.99,
     target_recall: float = 0.99,
+    weights: Sequence[float] | None = None,
 ) -> Thresholds:
     """Pick the accept and reject thresholds from holdout performance.
 
@@ -359,22 +400,25 @@ def choose_thresholds(
     if n == 0:
         return Thresholds(1.0, 0.0, target_precision, target_recall, 0.0, 0.0, 1.0, 0, False, False)
 
-    points = sorted(zip(confidence, actual, strict=True), key=lambda t: -t[0])
-    positives = sum(actual)
+    w = list(weights) if weights is not None else [1.0] * n
+    points = sorted(zip(confidence, actual, w, strict=True), key=lambda t: -t[0])
+    positives = sum(wi for y, wi in zip(actual, w, strict=True) if y)
 
     # Accept threshold: sweep down the ranking, keeping the last cut that still
     # met the precision target.
-    tp = 0
-    fp = 0
+    tp = 0.0
+    fp = 0.0
     accept = 1.0
     achieved_precision = 0.0
     precision_met = False
-    for i, (score, label) in enumerate(points):
-        tp += label
-        fp += 1 - label
+    for i, (score, label, wi) in enumerate(points):
+        tp += wi * label
+        fp += wi * (1 - label)
         # Only cut between distinct scores; a threshold inside a tie is not a
         # threshold that can be applied.
         if i + 1 < n and points[i + 1][0] == score:
+            continue
+        if tp + fp <= 0:
             continue
         precision = tp / (tp + fp)
         if precision >= target_precision:
@@ -391,11 +435,11 @@ def choose_thresholds(
     # Setting it to the discarded score itself leaves that whole group sitting
     # in the grey band - which, when a model separates cleanly and its
     # negatives all land on one value, is every negative it had.
-    distinct = sorted({score for score, _ in points})
-    positives_at_or_below: dict[float, int] = {}
-    running = 0
-    for score, label in sorted(zip(confidence, actual, strict=True), key=lambda t: t[0]):
-        running += label
+    distinct = sorted({score for score, _, _ in points})
+    positives_at_or_below: dict[float, float] = {}
+    running = 0.0
+    for score, label, wi in sorted(zip(confidence, actual, w, strict=True), key=lambda t: t[0]):
+        running += wi * label
         positives_at_or_below[score] = running
 
     reject = distinct[0]
@@ -417,13 +461,15 @@ def choose_thresholds(
         # threshold and the achieved numbers below say why.
         reject = accept
 
-    grey = sum(1 for c in confidence if reject <= c < accept) / n
+    grey = sum(wi for c, wi in zip(confidence, w, strict=True) if reject <= c < accept) / (
+        sum(w) or 1.0
+    )
     return Thresholds(
         t_auto_accept=accept,
         t_auto_reject=reject,
         target_precision=target_precision,
         target_recall=target_recall,
-        achieved_precision=achieved_precision,
+        achieved_precision=min(achieved_precision, 1.0),
         achieved_recall=min(achieved_recall, 1.0) if positives else 0.0,
         grey_band_fraction=grey,
         n_holdout=n,
@@ -468,7 +514,7 @@ class CalibrationResult:
 def calibrate(
     keys: Sequence[str],
     weights: Sequence[float],
-    labels: Sequence[int],
+    labels: Sequence[float],
     seed: int,
     raw_probabilities: Sequence[float] | None = None,
     holdout_fraction: float = DEFAULT_HOLDOUT,
@@ -476,6 +522,8 @@ def calibrate(
     target_precision: float = 0.99,
     target_recall: float = 0.99,
     resolution: float | None = DEFAULT_RESOLUTION,
+    sample_weight: Sequence[float] | None = None,
+    label_noise: float = 0.0,
 ) -> CalibrationResult:
     """Split, fit isotonic on the fit half, measure the holdout, pick thresholds.
 
@@ -498,19 +546,24 @@ def calibrate(
     almost three times worse.
     """
     raw = list(raw_probabilities) if raw_probabilities is not None else list(weights)
+    label_weights = list(sample_weight) if sample_weight is not None else [1.0] * len(keys)
     fit_p: list[float] = []
-    fit_y: list[int] = []
+    fit_y: list[float] = []
+    fit_w: list[float] = []
     hold_p: list[float] = []
-    hold_y: list[int] = []
+    hold_y: list[float] = []
+    hold_w: list[float] = []
     hold_raw: list[float] = []
-    for key, w, y, r in zip(keys, weights, labels, raw, strict=True):
+    for key, w, y, r, wi in zip(keys, weights, labels, raw, label_weights, strict=True):
         if in_holdout(key, seed, holdout_fraction):
             hold_p.append(w)
             hold_y.append(y)
+            hold_w.append(wi)
             hold_raw.append(r)
         else:
             fit_p.append(w)
             fit_y.append(y)
+            fit_w.append(wi)
 
     notes: list[str] = []
     if not hold_p:
@@ -518,14 +571,23 @@ def calibrate(
         # Small fixtures and tiny organization samples can land entirely on one
         # side. Reporting on the fit split is wrong but silence is worse, so it
         # is done and said.
-        hold_p, hold_y = fit_p, fit_y
+        hold_p, hold_y, hold_w = fit_p, fit_y, fit_w
         hold_raw = hold_raw or list(fit_p)
         notes.append("holdout empty; metrics computed on the fit split")
 
-    calibrator = fit_isotonic(fit_p, fit_y, resolution) if fit_p else IsotonicCalibrator.identity()
-    before = reliability(hold_raw, hold_y, bins)
+    # Labels are counted de-noised from here on, so every rate - the fitted
+    # curve included - estimates the true one rather than the observed one.
+    weighted = sample_weight is not None
+    fit_y = denoise_soft(fit_y, label_noise)
+    hold_y = denoise_soft(hold_y, label_noise)
+    calibrator = (
+        fit_isotonic(fit_p, fit_y, resolution, fit_w if weighted else None)
+        if fit_p
+        else IsotonicCalibrator.identity()
+    )
+    before = reliability(hold_raw, hold_y, bins, hold_w if weighted else None)
     calibrated = [calibrator.apply(p) for p in hold_p]
-    after = reliability(calibrated, hold_y, bins)
+    after = reliability(calibrated, hold_y, bins, hold_w if weighted else None)
     if after.ece > before.ece:
         notes.append(
             f"isotonic did not improve ECE on holdout ({before.ece:.4f} -> {after.ece:.4f})"
@@ -541,7 +603,9 @@ def calibrate(
             "identifiable from this data and should not be read as a precision guarantee"
         )
 
-    thresholds = choose_thresholds(calibrated, hold_y, target_precision, target_recall)
+    thresholds = choose_thresholds(
+        calibrated, hold_y, target_precision, target_recall, hold_w if weighted else None
+    )
     if not thresholds.precision_target_met:
         notes.append(
             f"precision target {target_precision} unreachable on holdout; "
@@ -558,6 +622,102 @@ def calibrate(
         seed=seed,
         notes=notes,
     )
+
+
+def expected_thresholds(
+    confidence: Sequence[float],
+    target_precision: float = 0.99,
+    target_recall: float = 0.99,
+) -> Thresholds:
+    """Thresholds from a population's calibrated confidences, with no labels at all.
+
+    If the confidences are calibrated, the precision of auto-accepting every
+    record at or above `t` is the mean confidence of those records, and the
+    true matches below `t` number the sum of their confidences. So both
+    thresholds can be chosen on every record a run scored - thousands of them -
+    instead of on the few hundred labels a retune has, where a 99% target is
+    decided by whether one or two negatives happen to fall in the holdout. The
+    labels still decide the calibration; this only decides where to cut it.
+
+    `accept` is the lowest confidence whose population above it still averages
+    `target_precision`; `reject` the highest whose population below it holds no
+    more than `1 - target_recall` of the expected matches.
+    """
+    n = len(confidence)
+    if n == 0:
+        return Thresholds(1.0, 0.0, target_precision, target_recall, 0.0, 0.0, 1.0, 0, False, False)
+
+    descending = sorted(confidence, reverse=True)
+    accept = 1.0
+    achieved_precision = 0.0
+    precision_met = False
+    running = 0.0
+    for i, c in enumerate(descending):
+        running += c
+        if i + 1 < n and descending[i + 1] == c:
+            continue
+        mean = running / (i + 1)
+        # A running mean of a descending sequence only falls, so the first
+        # miss is the last chance.
+        if mean < target_precision:
+            if not precision_met:
+                achieved_precision = mean
+            break
+        accept, achieved_precision, precision_met = c, mean, True
+
+    expected = sum(confidence)
+    ascending = descending[::-1]
+    distinct = sorted(set(ascending))
+    below: dict[float, float] = {}
+    running = 0.0
+    for c in ascending:
+        running += c
+        below[c] = running
+    reject = distinct[0]
+    achieved_recall = 1.0
+    recall_met = expected <= 0
+    for i, c in enumerate(distinct):
+        recall = (expected - below[c]) / expected if expected > 0 else 1.0
+        if recall < target_recall:
+            break
+        reject = distinct[i + 1] if i + 1 < len(distinct) else c
+        achieved_recall = recall
+        recall_met = True
+    if reject > accept:
+        reject = accept
+
+    grey = sum(1 for c in confidence if reject <= c < accept) / n
+    return Thresholds(
+        t_auto_accept=accept,
+        t_auto_reject=reject,
+        target_precision=target_precision,
+        target_recall=target_recall,
+        achieved_precision=min(achieved_precision, 1.0),
+        achieved_recall=min(achieved_recall, 1.0),
+        grey_band_fraction=grey,
+        n_holdout=n,
+        precision_target_met=precision_met,
+        recall_target_met=recall_met,
+    )
+
+
+def denoise_soft(labels: Sequence[float], noise: float) -> list[float]:
+    """`denoise` for labels already given as floats; unchanged at noise 0."""
+    return list(labels) if noise == 0 else [(y - noise) / (1.0 - 2.0 * noise) for y in labels]
+
+
+def denoise(labels: Sequence[int], noise: float) -> list[float]:
+    """Unbiased per-label estimates of the true label, given a reviewer error rate.
+
+    With symmetric error rate epsilon, E[observed] = epsilon + (1 - 2 epsilon) * true,
+    so (observed - epsilon) / (1 - 2 epsilon) has expectation equal to the true
+    label. At epsilon = 0 the labels come back unchanged.
+    """
+    if not 0.0 <= noise < 0.5:
+        raise ValueError(f"noise must be in [0, 0.5), got {noise}")
+    if noise == 0:
+        return [float(y) for y in labels]
+    return [(y - noise) / (1.0 - 2.0 * noise) for y in labels]
 
 
 def logistic_floor(value: float) -> float:

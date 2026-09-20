@@ -10,6 +10,7 @@ import {
   Users,
   Briefcase,
   FlaskConical,
+  GitBranch,
 } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
@@ -26,6 +27,7 @@ const NAV = [
   { to: "/queue", label: "Queue", icon: ListChecks },
   { to: "/cases", label: "Cases", icon: Briefcase },
   { to: "/lab", label: "Lab", icon: FlaskConical },
+  { to: "/models", label: "Models", icon: GitBranch },
   { to: "/audit", label: "Audit", icon: ScrollText, adminOnly: true },
 ] as const;
 

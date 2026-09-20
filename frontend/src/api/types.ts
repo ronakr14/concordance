@@ -48,6 +48,11 @@ export type LabCell = S["LabCellOut"];
 export type LabCalibration = S["LabCalibrationOut"];
 export type LabLlmLevel = S["LabLlmLevelOut"];
 export type LlmStrategy = S["LlmStrategyOut"];
+export type FeedbackRound = S["FeedbackRoundOut"];
+export type LabFeedback = S["LabFeedbackOut"];
+
+export type ScoringConfig = S["ScoringConfigOut"];
+export type ConfigActivation = S["ConfigActivationOut"];
 
 export interface Page<T> {
   items: T[];

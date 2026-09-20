@@ -164,7 +164,7 @@ def test_the_default_schedule_is_case_expiry_daily() -> None:
 def test_every_kind_the_plan_names_has_a_handler() -> None:
     import concordance.jobs.handlers  # noqa: F401  - registers them
 
-    for kind in ("reconcile", "eval", "sweep", "retune", "expire_cases"):
+    for kind in ("reconcile", "eval", "sweep", "refit", "retune", "expire_cases", "lab_feedback"):
         assert is_known(kind), f"{kind} has no handler"
         assert callable(handler_for(kind))
     assert "reconcile" in known_kinds()

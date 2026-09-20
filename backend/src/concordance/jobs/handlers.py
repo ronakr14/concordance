@@ -1,6 +1,6 @@
 """What each job kind actually does.
 
-Seven kinds, and the split between them is the split between work that decides
+Nine kinds, and the split between them is the split between work that decides
 something about production data and work that measures the engine:
 
 - `reconcile` - score the sanction records against the provider master and
@@ -9,12 +9,16 @@ something about production data and work that measures the engine:
 - `eval` - measure a strategy against ground truth and record an `eval_runs`
   row. Reads the Parquet dataset, because ground truth is a property of the
   synthetic corpus rather than of production.
-- `retune` - refit the Fellegi-Sunter models and register the result as a new
+- `refit` - refit the Fellegi-Sunter models from scratch on a dataset (EM, then
+  calibration against its ground truth) and register the result as a new
   immutable `scoring_configs` row. It never edits the config a finished run
   points at; a refit is a new version.
+- `retune` - the feedback loop: retune the *active* config on reviewer labels
+  (semi-supervised EM over a run's pair tally, then recalibration). Proposes a
+  version; activating it is a separate decision. See `learning.service`.
 - `sweep` - the robustness curve across corruption levels, written to a file.
-- `lab_sweep` / `lab_llm` - the Lab's two experiments, written to `lab_sweeps`
-  and `eval_runs` for the page to read. See `lab.service`.
+- `lab_sweep` / `lab_llm` / `lab_feedback` - the Lab's experiments, written to
+  `lab_sweeps` (and `eval_runs`) for the pages to read. See `lab.service`.
 
 Every handler takes the session the worker opened and returns a small summary
 dict. Most of them leave the transaction to the worker, so a handler that
@@ -126,9 +130,9 @@ def handle_eval(session: Session, settings: Settings, payload: dict[str, Any]) -
     }
 
 
-@register("retune")
-def handle_retune(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
-    """Refit the models and register the result as a new immutable config."""
+@register("refit")
+def handle_refit(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
+    """Refit the models from scratch and register the result as a new immutable config."""
     from concordance.eval.fitting import fit_config
     from concordance.eval.pairs import prepare
 
@@ -146,13 +150,13 @@ def handle_retune(session: Session, settings: Settings, payload: dict[str, Any])
     )
     if payload.get("write_file", True):
         fitted.config.write(settings.DATA_DIR / "configs" / f"{fitted.config.config_id}.json")
-    row = import_scoring_config(session, fitted.config, notes="retune job")
+    row = import_scoring_config(session, fitted.config, notes="refit job")
     # A new config changes what every later run decides, so it is recorded
     # like any other change of state - by the system, since a job did it.
     audit.record(
         session,
         Actor.system(),
-        "config.retuned",
+        "config.refitted",
         entity_type="scoring_config",
         entity_id=row.id,
         after={
@@ -168,6 +172,29 @@ def handle_retune(session: Session, settings: Settings, payload: dict[str, Any])
         "scoring_config_id": str(row.id),
         "t_auto_accept": row.t_auto_accept,
         "t_auto_reject": row.t_auto_reject,
+    }
+
+
+@register("retune")
+def handle_retune(session: Session, settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
+    """Retune the active config on reviewer labels. Proposes; does not activate unless asked."""
+    from concordance.learning.service import retune_active
+
+    run_id = payload.get("run_id")
+    retuned = retune_active(
+        session,
+        settings,
+        Actor.system(),
+        run_id=uuid.UUID(str(run_id)) if run_id else None,
+        activate=bool(payload.get("activate", False)),
+    )
+    return {
+        "config": retuned.row.version,
+        "scoring_config_id": str(retuned.row.id),
+        "improved": retuned.result.improved,
+        "recommended": retuned.result.recommended,
+        "verdict": retuned.result.verdict,
+        "activated": retuned.activated,
     }
 
 
@@ -218,6 +245,15 @@ def handle_lab_llm(
     return run_llm(session, settings, uuid.UUID(str(payload["lab_id"])))
 
 
+@register("lab_feedback")
+def handle_lab_feedback(
+    session: Session, settings: Settings, payload: dict[str, Any]
+) -> dict[str, Any]:
+    from concordance.lab.service import run_feedback
+
+    return run_feedback(session, settings, uuid.UUID(str(payload["lab_id"])))
+
+
 def _config_row(session: Session, settings: Settings, version: str | None) -> Any:
     from concordance.jobs.reconcile import ensure_scoring_config
 
@@ -233,9 +269,11 @@ def _as_uuid(value: Any) -> uuid.UUID | None:
 __all__ = [
     "handle_eval",
     "handle_expire_cases",
+    "handle_lab_feedback",
     "handle_lab_llm",
     "handle_lab_sweep",
     "handle_reconcile",
+    "handle_refit",
     "handle_retune",
     "handle_sweep",
 ]

@@ -28,6 +28,8 @@ export type CommitIn = Body<"/sanctions/upload/{file_id}/commit", "post">;
 export type ReviewIn = Body<"/matches/{match_id}/approve", "post">;
 export type LabSweepIn = Body<"/lab/sweep", "post">;
 export type LabLlmIn = Body<"/lab/llm", "post">;
+export type LabFeedbackIn = Body<"/lab/feedback", "post">;
+export type RetuneIn = Body<"/scoring-configs/retune", "post">;
 
 export const keys = {
   stats: ["stats"] as const,
@@ -44,6 +46,7 @@ export const keys = {
   mappings: ["column-mappings"] as const,
   runs: ["runs"] as const,
   lab: ["lab"] as const,
+  configs: ["scoring-configs"] as const,
 };
 
 /** Paged lists keep the previous page on screen while the next loads. */
@@ -293,5 +296,54 @@ export function useStartLlm() {
   return useMutation({
     mutationFn: (body: LabLlmIn) => unwrap(api.POST("/lab/llm", { body })),
     onSuccess: () => client.invalidateQueries({ queryKey: keys.lab }),
+  });
+}
+
+/** Simulated review rounds. Polls while any Lab experiment is live. */
+export const useLabFeedback = () =>
+  useQuery({
+    queryKey: [...keys.lab, "feedback"],
+    queryFn: () => unwrap(api.GET("/lab/feedback")),
+    refetchInterval: (query) => (query.state.data?.live ? 3000 : false),
+  });
+
+export function useStartFeedback() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LabFeedbackIn) => unwrap(api.POST("/lab/feedback", { body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.lab }),
+  });
+}
+
+// --- scoring configs ------------------------------------------------------------------
+
+export const useConfigs = () =>
+  useQuery({ queryKey: [...keys.configs, "list"], queryFn: () => unwrap(api.GET("/scoring-configs")) });
+
+export const useActivations = () =>
+  useQuery({ queryKey: [...keys.configs, "activations"], queryFn: () => unwrap(api.GET("/scoring-configs/activations")) });
+
+export function useRetune() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RetuneIn) => unwrap(api.POST("/scoring-configs/retune", { body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: keys.configs }),
+  });
+}
+
+export function useActivateConfig() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      unwrap(
+        api.POST("/scoring-configs/{config_id}/activate", {
+          params: { path: { config_id: id } },
+          body: { reason: reason ?? null },
+        }),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.configs });
+      void client.invalidateQueries({ queryKey: keys.runs });
+    },
   });
 }
