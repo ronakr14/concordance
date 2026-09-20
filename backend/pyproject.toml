@@ -46,6 +46,13 @@ dev = [
     "types-openpyxl",
 ]
 
+# One name for "everything this project needs", so the quick start in the
+# README cannot drift from what the code imports. `backend[dev]` alone installs
+# the test tools and none of the runtime extras, which is enough to run the
+# matching engine's unit tests and not enough to start the API - a distinction
+# nobody reading a quick start should have to make.
+all = ["concordance[llm,db,api,assistant,dev]"]
+
 [project.scripts]
 concordance = "concordance.cli:main"
 

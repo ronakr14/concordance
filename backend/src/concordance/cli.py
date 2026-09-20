@@ -806,21 +806,87 @@ def db_load(
 
 @db_app.command("reset")
 def db_reset(
-    yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Skip the confirmation. For scripts, not for people.")
+    ] = False,
+    recreate: Annotated[
+        bool,
+        typer.Option("--recreate", help="Drop to base and migrate back up, rather than truncate."),
+    ] = False,
     seed: SeedOpt = None,
 ) -> None:
-    """Drop every table and migrate back up. Destroys all data."""
-    from alembic import command
+    """Empty every table. What `docker compose down -v` used to do.
 
-    start(seed, echo_config=False)
-    if not yes and not typer.confirm(
-        "This drops every table in the database and recreates them empty. Continue?"
-    ):
-        raise typer.Abort()
-    config = _alembic_config()
-    command.downgrade(config, "base")
-    command.upgrade(config, "head")
-    typer.secho("database reset to an empty schema at head", fg="yellow")
+    The database is hosted, so there is no volume to drop and the equivalent
+    is a truncate - destructive in exactly the same way, and quick. The
+    migration history is deliberately left in place: wiping the data is a
+    routine part of reseeding, and losing the history with it would turn every
+    reset into a full remigration against a remote database.
+
+    `--recreate` is the old behaviour, and is what to reach for when the schema
+    itself is suspect rather than the data in it.
+
+    The confirmation asks for a word rather than a keystroke, because a prompt
+    that takes one keystroke gets answered by one.
+    """
+    from sqlalchemy import text
+
+    from concordance.db.session import _redact, get_engine
+
+    settings, _ = start(seed, echo_config=False)
+
+    if recreate:
+        if not yes and not typer.confirm(
+            "This drops every table in the database and recreates them empty. Continue?"
+        ):
+            raise typer.Abort()
+        from alembic import command
+
+        config = _alembic_config()
+        command.downgrade(config, "base")
+        command.upgrade(config, "head")
+        typer.secho("database reset to an empty schema at head", fg="yellow")
+        return
+
+    engine = get_engine(settings)
+    with engine.connect() as conn:
+        tables = [
+            row[0]
+            for row in conn.execute(
+                text(
+                    "SELECT tablename FROM pg_tables "
+                    "WHERE schemaname = 'public' AND tablename <> 'alembic_version' "
+                    "ORDER BY tablename"
+                )
+            )
+        ]
+        counts = {name: conn.execute(text(f'SELECT count(*) FROM "{name}"')).scalar_one()
+                  for name in tables}
+
+    if not tables:
+        typer.secho("nothing to truncate - the schema is empty", fg="yellow")
+        return
+
+    total = sum(counts.values())
+    typer.secho(
+        f"about to empty {len(tables)} table(s) in {_redact(str(settings.DATABASE_URL))}",
+        fg="yellow",
+    )
+    for name, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+        if count:
+            typer.echo(f"  {name:<30}{count:>12,} rows")
+    typer.secho(f"  {'total':<30}{total:>12,} rows - this cannot be undone", fg="red")
+
+    if not yes:
+        answer = typer.prompt("type RESET to confirm", default="", show_default=False)
+        if answer.strip() != "RESET":
+            typer.secho("cancelled - nothing was changed", fg="green")
+            raise typer.Exit(code=1)
+
+    quoted = ", ".join(f'"{name}"' for name in tables)
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE"))
+    typer.secho(f"emptied {len(tables)} table(s), {total:,} rows", fg="green")
 
 
 @db_app.command("import-cache")

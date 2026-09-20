@@ -1346,7 +1346,7 @@ failure rather than an application one — which is still exactly why this stage
 - [x] Interleaved log output from the three processes is readable and labelled by source — one reader thread per child feeding one printer, each line prefixed with the source name in its own colour. Colour is dropped when the output is redirected, and stdout is reconfigured to replace unencodable characters: Vite's banner arrow (U+279C) is unencodable on a cp1252 console, and relaying a child's output must never be able to kill the relay
 - [x] `make logs` / `make ps` either work natively or are removed rather than left as stubs that lie — both are real. `ps` prints the recorded pids and URLs, `logs` tails a detached start's log and says so plainly when the start was in the foreground instead
 - [x] `make down` stops a detached `make up` — by the pids in `.run/up.json`, supervisor and children alike, each as a tree. Verified against a live detached start: four trees stopped, no listener left on either port
-- [ ] `make clean` truncates the Neon schema, prompting for confirmation first ⭐ — replaces "drops volumes"
+- [x] `make reset-db` truncates the Neon schema, prompting for confirmation first ⭐ — replaces "drops volumes". Renamed from `make clean` deliberately: `clean` already meant "remove caches", and giving a destructive action a name people type without thinking is how data gets lost. `concordance db reset` lists every table with its row count, then asks for the word `RESET` rather than a keystroke; `--recreate` keeps the old drop-to-base-and-remigrate path for when the schema rather than the data is suspect. The truncate itself is covered by `tests/integration/test_db_reset.py`, which runs only under `CONCORDANCE_DESTRUCTIVE_TESTS=1` — CI sets it, a developer machine pointed at a seeded hosted database must not
 - [ ] `make up` documented in the README as the one command, with its native prerequisites stated
 
 ### Tests
@@ -1361,9 +1361,9 @@ failure rather than an application one — which is still exactly why this stage
 
 ### Security pass
 
-- [ ] No secret in the repository — verify with a history scan, not just the working tree ⭐
-- [ ] `.env` confirmed gitignored
-- [ ] Dependency vulnerability scan (`pip-audit`, `npm audit`)
+- [x] No credential in the repository — verified with a history scan, not just the working tree ⭐ — `scripts/scan_credentials.py` reads every blob any commit ever pointed at: 263 tracked files and 751 historical blobs, nothing found. `.env` has never been committed. The first run reported thirteen leaks, all of them documentation (`.env.example`'s `replace-with-a-long-random-string`, a docstring demonstrating URL redaction), so the patterns carry a placeholder list; 12 tests assert both halves — that a fabricated key of each of the six shapes is caught, and that every real placeholder string in this repository is not
+- [x] `.env` confirmed gitignored — and confirmed never committed: `git log --all -- .env` is empty
+- [x] Dependency vulnerability scan (`pip-audit`, `npm audit`) — `pip-audit` reports no known vulnerabilities across the installed dependency set; the only advisories it found were against `pip` itself, now upgraded. `npm audit` cannot run on this machine, whose TLS-inspecting proxy the registry's advisory endpoint rejects (the same proxy `LLM_CA_BUNDLE` exists for), so it runs in CI instead. Both are a job in the workflow, marked `continue-on-error`: a new advisory should be visible without turning a branch red that introduced nothing
 - [ ] SQL injection review of the assistant and every raw query ⭐
 - [ ] Verify the read-only role genuinely cannot write ⭐
 - [ ] Verify `audit_logs` genuinely cannot be updated or deleted by the app role ⭐
@@ -1414,10 +1414,10 @@ failure rather than an application one — which is still exactly why this stage
 
 ### CI
 
-- [ ] GitHub Actions workflow: lint, typecheck, unit tests on push ⭐
-- [ ] Integration tests against a `postgres:17` **service container** ⭐ — the one place containers remain, because GitHub's runners provide Docker and nothing is installed locally. `CREATE EXTENSION pg_trgm` must run in the CI database too, or the trigram blocking tests will not exercise what they claim to
-- [ ] Frontend build and `tsc --noEmit` in CI
-- [ ] CI is the proof that the install instructions work ⭐ — it starts from a clean checkout and a bare Python, so a missing dependency or an undeclared step fails the build. This replaces "Docker build verified in CI", which proved the same thing by a route no longer available
+- [x] GitHub Actions workflow: lint, typecheck, unit tests on push ⭐ — `.github/workflows/ci.yml`, three jobs: backend, dependency audit, frontend
+- [x] Integration tests against a `postgres:17` **service container** ⭐ — the one place containers remain, because GitHub's runners provide Docker and nothing is installed locally. `CREATE EXTENSION pg_trgm` runs in the CI database, and so does `CREATE ROLE concordance_app`: the migration's `GRANT` is guarded on that role existing, and proving `audit_logs` is append-only needs a role that does not own the table. CI then writes the `.env` the integration fixtures read, because the root conftest hides the environment from the suite on purpose
+- [x] Frontend build and `tsc --noEmit` in CI — `npm run typecheck` then `npm run build`, on Node 22
+- [x] CI is the proof that the install instructions work ⭐ — it starts from a clean checkout and a bare Python, so a missing dependency or an undeclared step fails the build. Writing it exposed the first such gap: the README said `pip install -e backend[dev]`, which installs the test tools and none of the runtime extras, so a reader following it verbatim could run the engine's unit tests and never start the API. There is now a `backend[all]` extra, and that is what both CI and the README use
 - [ ] Status badge in the README
 
 ### GATE 10 — ship

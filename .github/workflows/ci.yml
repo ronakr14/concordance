@@ -1,0 +1,192 @@
+# CI is the proof that the install instructions work.
+#
+# It starts from a clean checkout and a bare Python, so a dependency that is
+# only installed on the author's machine, or a step the README forgets to
+# mention, fails the build. That is the job containerization used to do here:
+# Docker was cut from this project because it cannot be installed on the
+# development machine, and the property it was buying - "this runs somewhere
+# other than the laptop that wrote it" - is bought by CI instead.
+#
+# One exception to "no containers": the Postgres service container below. It
+# runs on GitHub's runner, which provides Docker and needs nothing installed
+# locally.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  backend:
+    name: lint, typecheck, tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: concordance_owner
+          POSTGRES_PASSWORD: concordance
+          POSTGRES_DB: concordance
+        ports: ["5432:5432"]
+        # Without this the first step can reach a container that is up but not
+        # yet accepting connections, which fails as "connection refused" and
+        # reads like a configuration error.
+        options: >-
+          --health-cmd "pg_isready -U concordance_owner"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The credential scan reads every blob in the history, so it needs
+          # the whole history rather than the default single commit.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install the package as the README says to
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "backend[all]"
+
+      - name: Prepare the database
+        # Two things the application cannot do for itself. `pg_trgm` is an
+        # extension, which only a superuser may create, and the trigram
+        # blocking tests silently test nothing without it. The app role is the
+        # least-privilege role the API connects as; it has to exist before the
+        # migration's GRANT can name it, and proving `audit_logs` is
+        # append-only needs a role that does not own the table.
+        env:
+          PGPASSWORD: concordance
+        run: |
+          psql -h localhost -U concordance_owner -d concordance -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS pg_trgm;
+          CREATE ROLE concordance_app LOGIN PASSWORD 'concordance_app';
+          GRANT CONNECT ON DATABASE concordance TO concordance_app;
+          GRANT USAGE ON SCHEMA public TO concordance_app;
+          SQL
+
+      - name: Write .env
+        # The integration fixtures read `.env` directly rather than through
+        # `Settings`, because the root conftest hides the environment from the
+        # suite on purpose. So CI writes the file the fixtures look for.
+        run: |
+          cat > .env <<'ENVFILE'
+          ENV=test
+          LOG_LEVEL=WARNING
+          DATABASE_URL=postgresql+psycopg://concordance_owner:concordance@localhost:5432/concordance
+          APP_DATABASE_URL=postgresql+psycopg://concordance_app:concordance_app@localhost:5432/concordance
+          JWT_SECRET=ci-only-secret-not-used-anywhere-else
+          LLM_ENABLED=false
+          ENVFILE
+
+      - name: Lint
+        run: python -m ruff check backend/src tests tasks.py scripts
+
+      - name: Scan for credentials, history included
+        # `fetch-depth: 0` above is what makes this meaningful: a shallow
+        # clone has no history to scan, and the scan would pass by knowing
+        # nothing.
+        run: python scripts/scan_credentials.py
+
+      - name: Typecheck
+        run: python -m mypy
+        working-directory: backend
+
+      - name: Migrate
+        run: python -m concordance.cli db upgrade head
+
+      - name: Preflight
+        # The launcher's own checks, run against a database CI built from
+        # nothing. If this passes here it passes on a clean checkout.
+        run: python -m concordance.cli preflight
+
+      - name: Unit tests
+        # Run first and alone: they need no database, so a failure here is a
+        # failure in the code rather than in the environment around it.
+        run: python -m pytest tests/unit -q
+
+      - name: Full suite, with the coverage gates
+        # One run rather than two. The integration tests and the coverage
+        # measurement want the same suite, and running it twice against the
+        # same database means the destructive reset test runs twice for no
+        # extra information.
+        #
+        # CI is the only place that test may run at all: this database was
+        # built from nothing three steps ago, while a developer machine points
+        # at a shared hosted one holding a seeded 50,000-provider dataset.
+        env:
+          CONCORDANCE_DESTRUCTIVE_TESTS: "1"
+        run: >-
+          python -m pytest tests
+          --cov=concordance.matching --cov=concordance.api
+          --cov-report=term-missing --cov-fail-under=80
+          -q
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    # Advisories appear without anyone changing the code, so a new one should
+    # be visible without turning the build red on a branch that introduced
+    # nothing. The other jobs still gate merges.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Python dependencies
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -e "backend[all]"
+          # `--skip-editable` because concordance itself is installed from
+          # this checkout and has no PyPI release to look up; `--strict` is
+          # off for the same reason, since it treats that skip as an error.
+          pip-audit --skip-editable --progress-spinner off
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Node dependencies
+        run: npm audit --audit-level=high
+        working-directory: frontend
+
+  frontend:
+    name: web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend

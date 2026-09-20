@@ -249,6 +249,15 @@ def preflight(args: list[str]) -> int:
     )
 
 
+def reset_db(args: list[str]) -> int:
+    """Empty every table in the hosted database. What `compose down -v` did."""
+    v = _vars(args)
+    argv = [PY, "-m", "concordance.cli", "db", "reset"]
+    if v.get("YES", "").lower() in {"1", "true", "yes"}:
+        argv += ["--yes"]
+    return _run(*argv)
+
+
 def clean(args: list[str]) -> int:
     for pattern in ("__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"):
         for p in ROOT.rglob(pattern):
@@ -286,6 +295,7 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "ps": ps,
     "logs": logs,
     "preflight": preflight,
+    "reset-db": reset_db,
 }
 
 
