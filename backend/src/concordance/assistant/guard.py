@@ -16,11 +16,12 @@ The rules, each of which refuses rather than sanitizes:
    command.
 3. No comments and no statement separators in the text at all, checked before
    parsing: `--`, `/*`, `*/` and every `;` but a single trailing one.
-4. Every table named is one of the whitelisted views, or a CTE defined in the
-   same query. `pg_catalog`, `information_schema` and any schema qualifier are
-   refused outright.
+4. Every table named is one of the whitelisted views, or a reference that scope
+   analysis resolves to a CTE - not merely one sharing a CTE's name.
+   `pg_catalog`, `information_schema` and any schema qualifier are refused
+   outright.
 5. No function from the denylist - the file, sleep, dblink and settings family
-   - and no `pg_*` function at all.
+   - and no `pg_*`, `lo_*` or `dblink*` function at all.
 6. No `SELECT ... INTO`, no locking clause, no placeholder or bind parameter.
 7. A `LIMIT` is enforced: missing, it is added; larger than the cap, it is
    lowered.
@@ -38,6 +39,7 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.scope import traverse_scope
 
 from concordance.assistant.views import ALLOWED_VIEWS
 
@@ -141,22 +143,19 @@ def check(
             code="not_a_select",
         )
 
-    cte_names = {
-        cte.alias_or_name.lower() for cte in tree.find_all(exp.CTE) if cte.alias_or_name
-    }
-    tables: set[str] = set()
+    cte_refs = _cte_references(tree)
+    named: set[str] = set()
     for node in tree.walk():
         if isinstance(node, _FORBIDDEN_NODES):
             raise SqlRejectedError(
                 f"{type(node).__name__.upper()} is not allowed: the assistant may only read",
                 code="forbidden_statement",
             )
-        if isinstance(node, exp.Table):
-            tables.add(_table_name(node, allowed, cte_names))
+        if isinstance(node, exp.Table) and id(node) not in cte_refs:
+            named.add(_table_name(node, allowed))
         if isinstance(node, exp.Func):
             _check_function(node)
 
-    named = {t for t in tables if t not in cte_names}
     if not named:
         raise SqlRejectedError(
             "the query reads no whitelisted view; the assistant can only answer from "
@@ -183,7 +182,27 @@ def check(
     )
 
 
-def _table_name(node: exp.Table, allowed: frozenset[str], cte_names: set[str]) -> str:
+def _cte_references(tree: exp.Expression) -> set[int]:
+    """The `Table` nodes that Postgres will resolve to a CTE rather than a relation.
+
+    Matching by name is not enough. In `WITH users AS (SELECT * FROM users)` the
+    inner `users` is the real table, because a non-recursive CTE cannot see
+    itself, and a CTE cannot see one defined after it either. Scope analysis
+    applies those rules. Any node it does not resolve to a CTE is treated as a
+    real relation and must be whitelisted, so a gap in the analysis costs a
+    refusal rather than a table.
+    """
+    try:
+        scopes = traverse_scope(tree)
+    except Exception as exc:  # sqlglot's optimizer raises several types
+        raise SqlRejectedError(
+            f"the query's table references could not be resolved: {exc}", code="unparsable"
+        ) from exc
+    real = {id(s) for scope in scopes for s in scope.sources.values() if isinstance(s, exp.Table)}
+    return {id(t) for scope in scopes for t in scope.tables if id(t) not in real}
+
+
+def _table_name(node: exp.Table, allowed: frozenset[str]) -> str:
     name = (node.name or "").lower()
     schema = (node.db or "").lower()
     if schema and schema != "public":
@@ -192,7 +211,7 @@ def _table_name(node: exp.Table, allowed: frozenset[str], cte_names: set[str]) -
             f"{', '.join(sorted(allowed))}",
             code="forbidden_table",
         )
-    if name not in allowed and name not in cte_names:
+    if name not in allowed:
         raise SqlRejectedError(
             f"{name or 'that table'} is not one of the views the assistant may read "
             f"({', '.join(sorted(allowed))})",
@@ -205,7 +224,7 @@ def _check_function(node: exp.Func) -> None:
     name = (node.sql_name() or "").lower()
     if isinstance(node, exp.Anonymous):
         name = str(node.this or "").lower()
-    if name in _FORBIDDEN_FUNCTIONS or name.startswith(("pg_", "dblink")):
+    if name in _FORBIDDEN_FUNCTIONS or name.startswith(("pg_", "dblink", "lo_")):
         raise SqlRejectedError(f"the function {name}() is not allowed here", code="forbidden_function")
 
 

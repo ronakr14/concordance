@@ -62,12 +62,20 @@ class UserRepository:
             select(RefreshToken).where(RefreshToken.token_hash == token_hash)
         )
 
-    def revoke_refresh_token(self, token_hash: str) -> None:
-        self.session.execute(
+    def revoke_refresh_token(self, token_hash: str) -> bool:
+        """Revoke a live token. True only for the caller whose update revoked it.
+
+        The rowcount is the point. Two requests presenting the same token can
+        both read it as live; the second `UPDATE` waits on the first one's row
+        lock, re-checks `revoked_at IS NULL` once it commits, and matches
+        nothing. That second caller must be refused, not issued a pair.
+        """
+        result = self.session.execute(
             update(RefreshToken)
             .where(RefreshToken.token_hash == token_hash, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(UTC))
         )
+        return bool(getattr(result, "rowcount", 0))
 
     def revoke_all_for_user(self, user_id: uuid.UUID) -> None:
         """What a password change and a forced logout both need."""

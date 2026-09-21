@@ -14,7 +14,8 @@ a setting back into the process for other tests to pick up.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -68,4 +69,27 @@ def app_session(app_url: str) -> Iterator[Any]:
     factory = sessionmaker(bind=engine, future=True)
     with factory() as session:
         yield session
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def owner_scope(owner_url: str) -> Iterator[Callable[[], AbstractContextManager[Any]]]:
+    """Transactions as the owner, for test cleanup only.
+
+    The code under test connects as the app role, exactly as the API and worker
+    do, and the app role may not delete audit rows. Tidying up after a test is
+    not something the application does, so it runs as the owner here rather
+    than weakening the role to make cleanup possible.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(owner_url, connect_args={"connect_timeout": 20}, pool_pre_ping=True)
+
+    @contextmanager
+    def scope() -> Iterator[Session]:
+        with Session(engine) as session, session.begin():
+            yield session
+
+    yield scope
     engine.dispose()

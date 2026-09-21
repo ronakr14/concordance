@@ -82,6 +82,9 @@ ATTACKS: list[tuple[str, str, str]] = [
      "SELECT table_name FROM information_schema.tables", "forbidden_table"),
     ("hide the user table inside a CTE so the guard misses it",
      "WITH leak AS (SELECT email FROM users) SELECT * FROM leak", "forbidden_table"),
+    ("name the CTE after the table it reads, so the guard takes one for the other",
+     "WITH users AS (SELECT email, password_hash FROM users) "
+     "SELECT u.* FROM users u CROSS JOIN assistant_runs", "forbidden_table"),
     ("put a password hash in a column of an allowed view",
      "SELECT record_id, (SELECT password_hash FROM users LIMIT 1) AS x FROM assistant_matches",
      "forbidden_table"),
@@ -129,20 +132,22 @@ class World:
 
 
 @pytest.fixture(scope="module")
-def world(owner_url: str) -> Iterator[World]:
+def world(owner_url: str, app_url: str, owner_scope: Any) -> Iterator[World]:
     import random
+    from datetime import UTC, datetime
 
     from sqlalchemy import delete
 
     from concordance.audit.service import Actor
     from concordance.config import Settings
     from concordance.db.models import AuditLog
-    from concordance.db.session import dispose_engine, session_scope
+    from concordance.db.session import dispose_engine
     from concordance.llm.router import LLMRouter
 
     dispose_engine()
     settings = Settings(
         DATABASE_URL=owner_url,
+        APP_DATABASE_URL=app_url,
         DB_CONNECT_TIMEOUT=20,
         LLM_ENABLED=True,
         GROQ_API_KEY="unused",
@@ -152,10 +157,19 @@ def world(owner_url: str) -> Iterator[World]:
     router = LLMRouter(
         providers=[provider], cache=None, sleep=lambda _s: None, rng=random.Random(0), max_attempts=1
     )
+    started = datetime.now(UTC)
     yield World(settings=settings, actor=Actor.system(), provider=provider, router=router)
 
-    with session_scope(settings) as session:
-        session.execute(delete(AuditLog).where(AuditLog.action == "assistant.query"))
+    # Only this module's own rows: every question here is asked as the system
+    # actor, and a person's real questions never are.
+    with owner_scope() as session:
+        session.execute(
+            delete(AuditLog).where(
+                AuditLog.action == "assistant.query",
+                AuditLog.actor_user_id.is_(None),
+                AuditLog.created_at >= started,
+            )
+        )
     dispose_engine()
 
 
@@ -311,6 +325,29 @@ def test_the_read_only_role_cannot_write(world: World) -> None:
             connection.execute(text(f"SET LOCAL ROLE {READONLY_ROLE}"))
             connection.execute(text("SET TRANSACTION READ ONLY"))
         connection.rollback()
+
+
+def test_the_read_only_role_cannot_write_even_in_a_writable_transaction(world: World) -> None:
+    """The test above sets READ ONLY, so it proves the transaction flag. This one
+    leaves the transaction writable, so what refuses is the role's own grants."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import ProgrammingError
+
+    from concordance.assistant.views import READONLY_ROLE
+    from concordance.db.session import get_engine
+
+    with get_engine(world.settings).connect() as connection:
+        for write in (
+            "CREATE TABLE assistant_probe (x int)",
+            "INSERT INTO cases (case_number) VALUES ('X')",
+            "UPDATE match_results SET review_status = 'APPROVED'",
+            "DELETE FROM audit_logs",
+            "DROP VIEW assistant_matches",
+        ):
+            connection.execute(text(f"SET LOCAL ROLE {READONLY_ROLE}"))
+            with pytest.raises(ProgrammingError, match=r"permission denied|must be owner"):
+                connection.execute(text(write))
+            connection.rollback()
 
 
 def test_every_view_the_whitelist_names_exists_and_nothing_else_is_readable(world: World) -> None:

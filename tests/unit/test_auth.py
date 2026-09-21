@@ -186,3 +186,49 @@ def test_two_refresh_tokens_are_never_the_same(settings: Settings) -> None:
     first, _, _ = new_refresh_token(settings)
     second, _, _ = new_refresh_token(settings)
     assert first != second
+
+
+# --------------------------------------------------------------------------
+# refresh rotation under concurrency
+# --------------------------------------------------------------------------
+
+
+def test_a_refresh_that_loses_the_race_is_treated_as_reuse(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two requests present one live token at once. Both read it as live; only
+    one `UPDATE` revokes it. The other must be refused, and must cut the user's
+    sessions exactly as a sequential reuse would, not be issued a second pair."""
+    from types import SimpleNamespace
+
+    from concordance.auth import service
+
+    user_id = uuid.uuid4()
+    calls: list[str] = []
+
+    class LostTheRace:
+        def __init__(self, _session: object) -> None: ...
+
+        def find_refresh_token(self, _hash: str) -> object:
+            return SimpleNamespace(
+                user_id=user_id, revoked_at=None, expires_at=datetime.now(UTC) + timedelta(days=1)
+            )
+
+        def get(self, _id: uuid.UUID) -> object:
+            return SimpleNamespace(id=user_id, is_active=True, email="a@b.c", role="analyst")
+
+        def revoke_refresh_token(self, _hash: str) -> bool:
+            calls.append("revoke")
+            return False  # the other request's update got there first
+
+        def revoke_all_for_user(self, who: uuid.UUID) -> None:
+            assert who == user_id
+            calls.append("revoke_all")
+
+        def add_refresh_token(self, **_kw: object) -> None:
+            calls.append("issued")
+
+    monkeypatch.setattr(service, "UserRepository", LostTheRace)
+    with pytest.raises(service.InvalidRefreshTokenError, match="already been used"):
+        service.refresh(None, settings, refresh_token="presented-twice")  # type: ignore[arg-type]
+    assert calls == ["revoke", "revoke_all"]

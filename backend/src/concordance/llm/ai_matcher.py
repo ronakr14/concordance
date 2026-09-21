@@ -97,10 +97,15 @@ class LlmAdjudicator:
 
     @classmethod
     def from_settings(
-        cls, settings: Settings, *, router: LLMRouter | None = None
+        cls,
+        settings: Settings,
+        *,
+        router: LLMRouter | None = None,
+        prompt_version: str | None = None,
     ) -> LlmAdjudicator:
         return cls(
             router=router or LLMRouter.from_settings(settings),
+            prompt_version=prompt_version or PROMPT_VERSION,
             top_k=settings.LLM_TOP_K,
         )
 
@@ -267,7 +272,9 @@ class LlmAdjudicator:
         )
 
 
-def build_adjudicator(settings: Settings, *, router: LLMRouter | None = None) -> Any:
+def build_adjudicator(
+    settings: Settings, *, router: LLMRouter | None = None, prompt_version: str | None = None
+) -> Any:
     """The adjudicator this configuration calls for.
 
     `LLM_ENABLED=false` or no key returns `NullAdjudicator`, so a caller never
@@ -279,7 +286,9 @@ def build_adjudicator(settings: Settings, *, router: LLMRouter | None = None) ->
     if not settings.LLM_ENABLED:
         log.info("llm.adjudicator.disabled", reason="LLM_ENABLED=false")
         return NullAdjudicator()
-    adjudicator = LlmAdjudicator.from_settings(settings, router=router)
+    adjudicator = LlmAdjudicator.from_settings(
+        settings, router=router, prompt_version=prompt_version
+    )
     if not adjudicator.available:
         log.warning("llm.adjudicator.unconfigured", chain=adjudicator.router.chain_names())
         return NullAdjudicator()

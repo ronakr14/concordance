@@ -447,8 +447,14 @@ def _fail(
     log.error("reconcile.failed", run_id=str(run_id), error=f"{type(exc).__name__}: {exc}")
 
 
-def build_adjudicator_for(session: Session, settings: Settings, request: RunRequest) -> Any:
+def build_adjudicator_for(
+    session: Session, settings: Settings, request: RunRequest, prompt_version: str | None = None
+) -> Any:
     """The adjudicator for this run, cached against `llm_calls`.
+
+    `prompt_version` is for replay, which must render the prompt the original
+    run sent - its cached answers are keyed by that prompt's hash. A new run
+    leaves it unset and gets the current version.
 
     Grey-band records reach it only under `probabilistic_llm`; every other
     strategy gets `None` and `build_strategy` ignores it, so a deterministic run
@@ -463,7 +469,7 @@ def build_adjudicator_for(session: Session, settings: Settings, request: RunRequ
     router = LLMRouter.from_settings(
         settings, cache=PostgresCache(session), offline=request.offline_llm
     )
-    return build_adjudicator(settings, router=router)
+    return build_adjudicator(settings, router=router, prompt_version=prompt_version)
 
 
 def _progress(run: ReconciliationRun, engine: ReconciliationEngine) -> None:

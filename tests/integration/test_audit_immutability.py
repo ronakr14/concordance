@@ -89,3 +89,25 @@ def test_the_row_survives_the_attempts(app_session) -> None:
         text("SELECT action FROM audit_logs WHERE id = :id"), {"id": row_id}
     ).scalar_one()
     assert action == "immutability-probe"
+
+
+def test_the_engine_the_application_uses_cannot_rewrite_the_log(app_url: str, owner_url: str) -> None:
+    """The tests above prove `concordance_app` cannot update the log. This one
+    proves it is `concordance_app` the API and worker connect as - the revoke is
+    worth nothing if the running system uses the owner instead."""
+    from concordance.config import Settings
+    from concordance.db.session import dispose_engine, get_engine
+
+    dispose_engine()
+    settings = Settings(_env_file=None, DATABASE_URL=owner_url, APP_DATABASE_URL=app_url)
+    try:
+        with get_engine(settings).connect() as connection:
+            owner = connection.execute(
+                text("SELECT tableowner FROM pg_tables WHERE tablename = 'audit_logs'")
+            ).scalar_one()
+            assert connection.execute(text("SELECT current_user")).scalar_one() != owner
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                connection.execute(text("DELETE FROM audit_logs WHERE id = -1"))
+            connection.rollback()
+    finally:
+        dispose_engine()

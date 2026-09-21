@@ -58,28 +58,27 @@ def _register_test_handlers() -> Iterator[None]:
 
 
 @pytest.fixture
-def settings(owner_url: str) -> Any:
+def settings(owner_url: str, app_url: str) -> Any:
     """Settings pointed at the real database, with the engine reset around it."""
     from concordance.config import Settings
     from concordance.db.session import dispose_engine
 
     dispose_engine()
-    resolved = Settings(DATABASE_URL=owner_url, DB_CONNECT_TIMEOUT=20)
+    resolved = Settings(DATABASE_URL=owner_url, APP_DATABASE_URL=app_url, DB_CONNECT_TIMEOUT=20)
     yield resolved
     dispose_engine()
 
 
 @pytest.fixture
-def clean_queue(settings: Any) -> Iterator[str]:
+def clean_queue(owner_scope: Any) -> Iterator[str]:
     """A tag unique to this test, and no test jobs left behind afterwards."""
     from sqlalchemy import delete
 
     from concordance.db.models import AuditLog, Job
-    from concordance.db.session import session_scope
 
     tag = uuid.uuid4().hex[:12]
     yield tag
-    with session_scope(settings) as session:
+    with owner_scope() as session:
         session.execute(delete(Job).where(Job.kind.in_([MARKER_KIND, SLOW_KIND, FAILING_KIND])))
         session.execute(delete(AuditLog).where(AuditLog.entity_id == tag))
 

@@ -35,6 +35,25 @@ ATTACKS: list[tuple[str, str, str]] = [
     ("read information_schema", "SELECT table_name FROM information_schema.columns", "forbidden_table"),
     ("quote the identifier", 'SELECT * FROM "users"', "forbidden_table"),
     ("hide it in a CTE", "WITH x AS (SELECT * FROM users) SELECT * FROM x", "forbidden_table"),
+    # A CTE may share a table's name. Inside its own body, and inside any CTE
+    # defined before it, that name still means the table.
+    (
+        "shadow a table with a CTE of the same name",
+        "WITH users AS (SELECT * FROM users) SELECT u.* FROM users u CROSS JOIN assistant_runs",
+        "forbidden_table",
+    ),
+    (
+        "read a table before the CTE that shadows it is defined",
+        "WITH a AS (SELECT * FROM audit_logs), audit_logs AS (SELECT 1 AS x) "
+        "SELECT a.* FROM a, assistant_runs",
+        "forbidden_table",
+    ),
+    (
+        "shadow a table in a nested WITH",
+        "SELECT * FROM assistant_runs WHERE EXISTS "
+        "(WITH users AS (SELECT * FROM users) SELECT 1 FROM users)",
+        "forbidden_table",
+    ),
     (
         "hide it in a scalar subquery",
         "SELECT (SELECT password_hash FROM users LIMIT 1) FROM assistant_matches",
@@ -88,6 +107,9 @@ ALLOWED = [
     "SELECT decision, COUNT(*) FROM assistant_matches GROUP BY decision ORDER BY 2 DESC",
     "select * from ASSISTANT_CASES where status = 'ACTIVE'",
     "WITH m AS (SELECT * FROM assistant_matches) SELECT COUNT(*) FROM m",
+    "WITH m AS (SELECT * FROM assistant_matches), n AS (SELECT * FROM m) SELECT COUNT(*) FROM n",
+    "WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM r WHERE n < 3) "
+    "SELECT r.n, a.run_id FROM r, assistant_runs a",
     "SELECT state, AVG(confidence) FROM assistant_matches GROUP BY state HAVING COUNT(*) > 5",
     "SELECT r.config_version, r.matched_count FROM assistant_runs AS r ORDER BY r.started_at DESC",
     "SELECT record_id FROM assistant_sanctions EXCEPT SELECT record_id FROM assistant_matches",

@@ -37,6 +37,7 @@ from concordance.llm.ai_matcher import LlmAdjudicator
 from concordance.llm.cache import FileCache
 from concordance.llm.errors import Transient
 from concordance.llm.pricing import ModelPrice
+from concordance.llm.prompt import record_handle
 from concordance.llm.router import LLMRouter
 from concordance.llm.types import ChatMessage, LLMResponse
 from concordance.matching.strategies import ProbabilisticLlmStrategy
@@ -102,9 +103,9 @@ class OracleProvider:
         prompt = prompt.split("<<<EVIDENCE")[-1]
         found = re.search(r"^record: (\S+)", prompt, re.M)
         assert found is not None
-        record_id = found.group(1)
-        self.seen.append(record_id)
-        expected = self.truth[record_id]
+        handle = found.group(1)
+        self.seen.append(handle)
+        expected = self.truth[handle]
         offered = expected is not None and expected in prompt
         reply = {
             "decision": "MATCH" if offered else "NO_CONFIDENT_MATCH",
@@ -123,8 +124,12 @@ class OracleProvider:
 
 
 def _truth(prepared: Any) -> dict[str, str | None]:
+    """Keyed by the handle the prompt shows, since the record's own key is never
+    rendered. The oracle knows the answer; it still has to find it the way a
+    model would, from what the prompt carries."""
     return {
-        w.record_id: (w.truth.expected_provider_id if w.truth else None) for w in prepared
+        record_handle(w.record_id): (w.truth.expected_provider_id if w.truth else None)
+        for w in prepared
     }
 
 
@@ -248,7 +253,7 @@ def test_a_quota_that_runs_out_leaves_a_random_subsample_of_both_strata(
     assert sample["grey"] > 0
     assert sample["decided"] > 0
     # Random order: the answered records are not a prefix of the file.
-    order = {w.record_id: i for i, w in enumerate(prepared)}
+    order = {record_handle(w.record_id): i for i, w in enumerate(prepared)}
     answered = [order[r] for r in oracle.seen]
     assert answered != sorted(answered)
     for name, row in payload["strategies"].items():
@@ -278,7 +283,7 @@ def test_a_stratum_with_too_few_answers_is_withheld_not_extrapolated(
 
 
 @pytest.fixture(scope="module")
-def lab_settings(owner_url: str, tmp_path_factory: Any) -> Iterator[Any]:
+def lab_settings(owner_url: str, app_url: str, tmp_path_factory: Any) -> Iterator[Any]:
     from concordance.config import Settings
     from concordance.db.session import dispose_engine
 
@@ -286,6 +291,7 @@ def lab_settings(owner_url: str, tmp_path_factory: Any) -> Iterator[Any]:
     root = tmp_path_factory.mktemp("lab-data")
     yield Settings(
         DATABASE_URL=owner_url,
+        APP_DATABASE_URL=app_url,
         DB_CONNECT_TIMEOUT=20,
         DATA_DIR=root,
         LLM_ENABLED=True,
@@ -298,7 +304,7 @@ def lab_settings(owner_url: str, tmp_path_factory: Any) -> Iterator[Any]:
 
 
 @pytest.fixture(scope="module")
-def lab_rows(lab_settings: Any) -> Iterator[list[uuid.UUID]]:
+def lab_rows(lab_settings: Any, owner_scope: Any) -> Iterator[list[uuid.UUID]]:
     """Ids the tests create; deleted afterwards along with their jobs and audit rows."""
     from sqlalchemy import delete, select
 
@@ -311,7 +317,7 @@ def lab_rows(lab_settings: Any) -> Iterator[list[uuid.UUID]]:
 
     created: list[uuid.UUID] = []
     yield created
-    with session_scope(lab_settings) as session:
+    with owner_scope() as session:
         jobs = [
             j
             for (j,) in session.execute(select(LabSweep.job_id).where(LabSweep.id.in_(created)))

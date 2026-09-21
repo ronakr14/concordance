@@ -35,6 +35,7 @@ def test_production_requires_secrets() -> None:
         _env_file=None,
         ENV="production",
         DATABASE_URL="postgresql+psycopg://u:p@h/db",
+        APP_DATABASE_URL="postgresql+psycopg://app:p@h/db",
         JWT_SECRET="x" * 32,
     )
     ok.require_production_secrets()
@@ -117,3 +118,22 @@ def test_stage_five_commands_are_no_longer_placeholders() -> None:
     for command in ("upgrade", "downgrade", "load", "reset", "ping", "import-cache"):
         assert command in result.stdout
     assert "Stage 5" not in result.stdout
+
+
+@pytest.mark.unit
+def test_the_runtime_engine_connects_as_the_app_role_not_the_owner() -> None:
+    """The owner can never be revoked from its own table, so `audit_logs` is only
+    append-only if the API and worker connect as some other role."""
+    from concordance.db.session import database_url
+
+    s = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+psycopg://owner:p@h/db",
+        APP_DATABASE_URL="postgresql+psycopg://app:p@h/db",
+    )
+    assert database_url(s).startswith("postgresql+psycopg://app:")
+    assert database_url(s, owner=True).startswith("postgresql+psycopg://owner:")
+
+    # No quiet fallback to the owner when the app role is not configured.
+    with pytest.raises(RuntimeError, match="APP_DATABASE_URL"):
+        database_url(Settings(_env_file=None, DATABASE_URL="postgresql+psycopg://owner:p@h/db"))

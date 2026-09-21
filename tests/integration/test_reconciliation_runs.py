@@ -43,17 +43,17 @@ class Fixture:
 
 
 @pytest.fixture(scope="module")
-def settings(owner_url: str) -> Iterator[Any]:
+def settings(owner_url: str, app_url: str) -> Iterator[Any]:
     from concordance.config import Settings
     from concordance.db.session import dispose_engine
 
     dispose_engine()
-    yield Settings(DATABASE_URL=owner_url, DB_CONNECT_TIMEOUT=20)
+    yield Settings(DATABASE_URL=owner_url, APP_DATABASE_URL=app_url, DB_CONNECT_TIMEOUT=20)
     dispose_engine()
 
 
 @pytest.fixture(scope="module")
-def scenario(settings: Any) -> Iterator[Fixture]:
+def scenario(settings: Any, owner_scope: Any) -> Iterator[Fixture]:
     from sqlalchemy import delete, select
 
     from concordance.cases.lifecycle import open_case
@@ -133,7 +133,7 @@ def scenario(settings: Any) -> Iterator[Fixture]:
 
     yield fixture
 
-    with session_scope(settings) as session:
+    with owner_scope() as session:
         session.execute(delete(AuditLog).where(AuditLog.entity_id == str(fixture.case_id)))
         session.execute(delete(Case).where(Case.id == fixture.case_id))
         session.execute(

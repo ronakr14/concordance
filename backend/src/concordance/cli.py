@@ -788,13 +788,17 @@ def db_load(
 ) -> None:
     """Load a generated Parquet dataset into Postgres."""
     from concordance.db.loader import analyze, load_dataset
-    from concordance.db.session import get_engine
+    from concordance.db.session import owner_engine
 
     settings, _ = start(seed, echo_config=False)
     dataset = source or settings.generated_dir
-    engine = get_engine(settings)
-    report = load_dataset(engine, dataset, truncate=not append)
-    analyze(engine)
+    # The owner: the load truncates and analyzes, which the app role may not.
+    engine = owner_engine(settings)
+    try:
+        report = load_dataset(engine, dataset, truncate=not append)
+        analyze(engine)
+    finally:
+        engine.dispose()
     typer.echo(
         f"providers={report.providers}  block_keys={report.block_keys}  "
         f"sanctions={report.sanctions}  ground_truth={report.ground_truth}  "
@@ -831,7 +835,7 @@ def db_reset(
     """
     from sqlalchemy import text
 
-    from concordance.db.session import _redact, get_engine
+    from concordance.db.session import _redact, owner_engine
 
     settings, _ = start(seed, echo_config=False)
 
@@ -848,7 +852,7 @@ def db_reset(
         typer.secho("database reset to an empty schema at head", fg="yellow")
         return
 
-    engine = get_engine(settings)
+    engine = owner_engine(settings)  # TRUNCATE is the owner's alone
     with engine.connect() as conn:
         tables = [
             row[0]

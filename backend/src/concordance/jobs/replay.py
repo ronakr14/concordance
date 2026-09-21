@@ -159,7 +159,10 @@ def replay(
     request.strategy = run.strategy
     request.show_progress = show_progress
 
-    adjudicator = build_adjudicator_for(session, settings, request)
+    # The run's own prompt version, not today's: the cached answers are keyed
+    # by the prompt it sent. "none" is what a run without an adjudicator records.
+    recorded = run.prompt_version if run.prompt_version not in (None, "", "none") else None
+    adjudicator = build_adjudicator_for(session, settings, request, prompt_version=recorded)
     strategy = build_strategy(request.strategy, scoring.engine(), adjudicator)
     engine = ReconciliationEngine(strategy=strategy)
 

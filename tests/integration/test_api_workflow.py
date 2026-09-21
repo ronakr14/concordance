@@ -110,23 +110,22 @@ def _pick(owner: Any, sql: str, n: int) -> list[Any]:
 
 
 def _source_rows(owner: Any) -> dict[str, list[Any]]:
-    """Records the engine has already decided, so the test knows what to expect."""
-    current = """
-        SELECT sr.*, mr.chosen_provider_id AS decided_provider
-        FROM match_results mr JOIN sanction_records sr ON sr.id = mr.sanction_record_id
-        WHERE mr.superseded_by IS NULL AND mr.decision = '{d}' AND sr.file_id IS NULL {extra}
-        ORDER BY sr.ordinal
+    """Records whose outcome the test can know in advance."""
+    # Ground truth rather than current results: what the last run decided depends
+    # on its config, and a test should not depend on whichever run someone made
+    # most recently.
+    truth = """
+        SELECT sr.*, g.expected_provider_id AS decided_provider
+        FROM sanction_records sr JOIN ground_truth g ON g.sanction_record_id = sr.id
+        WHERE g.scenario_tag = '{tag}' AND sr.file_id IS NULL ORDER BY sr.ordinal
     """
     return {
-        "match": _pick(owner, current.format(d="MATCH", extra="AND mr.route = 'deterministic'"), 5),
-        "ambiguous": _pick(owner, current.format(d="AMBIGUOUS", extra=""), 3),
-        "org": _pick(
-            owner,
-            """SELECT sr.*, g.expected_provider_id AS decided_provider
-               FROM sanction_records sr JOIN ground_truth g ON g.sanction_record_id = sr.id
-               WHERE g.scenario_tag = 'org_exact' AND sr.file_id IS NULL ORDER BY sr.ordinal""",
-            3,
-        ),
+        # An exact NPI is decided deterministically, whatever the config.
+        "match": _pick(owner, truth.format(tag="exact_npi"), 5),
+        # Built to be undecidable: every member of a common-name cluster fits
+        # equally, so any config must decline it.
+        "ambiguous": _pick(owner, truth.format(tag="ambiguous"), 3),
+        "org": _pick(owner, truth.format(tag="org_exact"), 3),
     }
 
 
@@ -160,7 +159,8 @@ def world(app_url: str, owner_url: str, tmp_path_factory: Any) -> Iterator[World
     owner = sessionmaker(bind=owner_engine)()
 
     settings = Settings(
-        DATABASE_URL=app_url,
+        DATABASE_URL=owner_url,
+        APP_DATABASE_URL=app_url,
         JWT_SECRET=JWT_KEY,
         DB_CONNECT_TIMEOUT=20,
         STORAGE_LOCAL_PATH=tmp_path_factory.mktemp("storage"),

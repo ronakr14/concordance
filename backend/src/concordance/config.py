@@ -171,7 +171,7 @@ class Settings(BaseSettings):
             return
         missing = [
             name
-            for name in ("DATABASE_URL", "JWT_SECRET")
+            for name in ("DATABASE_URL", "APP_DATABASE_URL", "JWT_SECRET")
             if getattr(self, name) in (None, "")
         ]
         if self.LLM_ENABLED and not (self.OPENROUTER_API_KEY or self.GROQ_API_KEY):

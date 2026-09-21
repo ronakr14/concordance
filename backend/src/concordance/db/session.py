@@ -31,60 +31,87 @@ _engine: Engine | None = None
 _factory: sessionmaker[Session] | None = None
 
 
-def database_url(settings: Settings | None = None) -> str:
-    url = (settings or get_settings()).DATABASE_URL
+def database_url(settings: Settings | None = None, *, owner: bool = False) -> str:
+    """The connection string for the app role, or for the owner when `owner=True`.
+
+    The API, the worker and every routine command connect as the app role
+    (`APP_DATABASE_URL`). A table's owner can never be revoked from its own
+    table, so connecting as the owner would make `audit_logs` writable no matter
+    what the migration revoked. Only migrations and the two commands that
+    `TRUNCATE` connect as the owner. There is deliberately no fallback from one
+    to the other: silently falling back to the owner is the failure this split
+    exists to prevent.
+    """
+    resolved = settings or get_settings()
+    name = "DATABASE_URL" if owner else "APP_DATABASE_URL"
+    url = getattr(resolved, name)
     if not url:
-        raise RuntimeError(
-            "DATABASE_URL is unset - Stage 5 needs Postgres. See docs/CHECKLIST.md Stage -1."
-        )
+        raise RuntimeError(f"{name} is unset. See .env.example and docs/CHECKLIST.md Stage -1.")
     return str(url)
 
 
+def _engine_options(settings: Settings) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 5,
+        "future": True,
+        "echo": False,
+        # Small INSERT batches on purpose. SQLAlchemy would otherwise send
+        # one enormous multi-row statement, and a single statement whose
+        # payload is megabytes is the shape that stalls over a slow or
+        # inspected TLS link - the server finishes, the client keeps
+        # waiting, and the run hangs with no error. Smaller statements cost
+        # a few more round trips and never do that.
+        "insertmanyvalues_page_size": int(settings.DB_INSERT_PAGE_SIZE),
+        # `connect_timeout`: without it, a host that accepts the packet but
+        # never answers - a stopped service, a firewalled port - leaves the
+        # client waiting on the OS default, which on Windows is minutes.
+        # `db ping` exists to answer quickly, including when the answer is
+        # no.
+        #
+        # The keepalives prevent a failure that is otherwise silent: a
+        # hosted provider that drops a connection mid-query leaves the
+        # client blocked on a socket nobody will ever answer, and the run
+        # looks hung rather than failed. With these the OS notices in about
+        # a minute and psycopg raises.
+        "connect_args": {
+            "connect_timeout": int(settings.DB_CONNECT_TIMEOUT),
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+            # A statement ceiling as well, because keepalives only notice a
+            # socket that has gone quiet, not a server that accepted the
+            # query and stopped answering.
+            "options": f"-c statement_timeout={int(settings.DB_STATEMENT_TIMEOUT) * 1000}",
+        },
+    }
+    return options
+
+
 def get_engine(settings: Settings | None = None, **kwargs: Any) -> Engine:
-    """The process-wide engine, created on first use."""
+    """The process-wide engine, connected as the app role and created on first use."""
     global _engine
     if _engine is None:
         resolved = settings or get_settings()
-        options: dict[str, Any] = {
-            "pool_pre_ping": True,
-            "pool_size": 5,
-            "max_overflow": 5,
-            "future": True,
-            "echo": False,
-            # Small INSERT batches on purpose. SQLAlchemy would otherwise send
-            # one enormous multi-row statement, and a single statement whose
-            # payload is megabytes is the shape that stalls over a slow or
-            # inspected TLS link - the server finishes, the client keeps
-            # waiting, and the run hangs with no error. Smaller statements cost
-            # a few more round trips and never do that.
-            "insertmanyvalues_page_size": int(resolved.DB_INSERT_PAGE_SIZE),
-            # `connect_timeout`: without it, a host that accepts the packet but
-            # never answers - a stopped service, a firewalled port - leaves the
-            # client waiting on the OS default, which on Windows is minutes.
-            # `db ping` exists to answer quickly, including when the answer is
-            # no.
-            #
-            # The keepalives prevent a failure that is otherwise silent: a
-            # hosted provider that drops a connection mid-query leaves the
-            # client blocked on a socket nobody will ever answer, and the run
-            # looks hung rather than failed. With these the OS notices in about
-            # a minute and psycopg raises.
-            "connect_args": {
-                "connect_timeout": int(resolved.DB_CONNECT_TIMEOUT),
-                "keepalives": 1,
-                "keepalives_idle": 30,
-                "keepalives_interval": 10,
-                "keepalives_count": 5,
-                # A statement ceiling as well, because keepalives only notice a
-                # socket that has gone quiet, not a server that accepted the
-                # query and stopped answering.
-                "options": f"-c statement_timeout={int(resolved.DB_STATEMENT_TIMEOUT) * 1000}",
-            },
-        }
+        options = _engine_options(resolved)
         options.update(kwargs)
         _engine = create_engine(database_url(resolved), **options)
         log.info("db.engine.created", url=_redact(database_url(resolved)))
     return _engine
+
+
+def owner_engine(settings: Settings | None = None) -> Engine:
+    """A fresh engine connected as the owning role, for `db load` and `db reset` only.
+
+    Not cached, so it never becomes the process-wide engine by accident. The
+    caller disposes it.
+    """
+    resolved = settings or get_settings()
+    url = database_url(resolved, owner=True)
+    log.info("db.engine.created", url=_redact(url), role="owner")
+    return create_engine(url, **_engine_options(resolved))
 
 
 def get_sessionmaker(settings: Settings | None = None) -> sessionmaker[Session]:
@@ -155,6 +182,7 @@ __all__ = [
     "get_engine",
     "get_session",
     "get_sessionmaker",
+    "owner_engine",
     "ping",
     "session_scope",
 ]

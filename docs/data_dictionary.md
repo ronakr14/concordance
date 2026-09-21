@@ -221,7 +221,7 @@ Every adjudication request and response. Also the Stage 5 response cache.
 | `cache_key` | `VARCHAR(64)` | no | — | `sha256(provider + model + prompt_version + rendered_prompt)`. Unique - this is the cache index. |
 | `provider` | `VARCHAR(50)` | no | — | Which vendor answered (`groq`, `openrouter`). |
 | `model` | `VARCHAR(100)` | no | — | Model id that answered. |
-| `prompt_version` | `VARCHAR(50)` | no | — | Prompt version sent, e.g. `adjudication_v1`. |
+| `prompt_version` | `VARCHAR(50)` | no | — | Prompt version sent, e.g. `adjudication_v2`. |
 | `request` | `JSONB` | no | — | JSONB of the messages sent. Normalized evidence only - never raw source text. |
 | `response` | `JSONB` | no | — | JSONB of the normalized `LLMResponse`, including the raw provider body. |
 | `latency_ms` | `INTEGER` | no | `0` | Round-trip time for the call. |

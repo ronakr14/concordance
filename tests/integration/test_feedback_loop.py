@@ -36,7 +36,7 @@ class Loop:
 
 
 @pytest.fixture(scope="module")
-def loop(owner_url: str) -> Iterator[Loop]:
+def loop(owner_url: str, app_url: str, owner_scope: Any) -> Iterator[Loop]:
     from sqlalchemy import delete, select
 
     from concordance.config import Settings
@@ -57,7 +57,7 @@ def loop(owner_url: str) -> Iterator[Loop]:
 
     dispose_engine()
     settings = Settings(
-        DATABASE_URL=owner_url, DB_CONNECT_TIMEOUT=20, RETUNE_MIN_LABELS=40, AUDIT_RATE=0.05
+        DATABASE_URL=owner_url, APP_DATABASE_URL=app_url, DB_CONNECT_TIMEOUT=20, RETUNE_MIN_LABELS=40, AUDIT_RATE=0.05
     )
     with session_scope(settings) as session:
         before_activations = {a.id for a in session.scalars(select(ConfigActivation))}
@@ -105,7 +105,7 @@ def loop(owner_url: str) -> Iterator[Loop]:
     state = Loop(settings, run_id, parent_id, written, [], [])
     yield state
 
-    with session_scope(settings) as session:
+    with owner_scope() as session:
         results = select(MatchResult.id).where(MatchResult.run_id == run_id)
         session.execute(delete(FeedbackEvent).where(FeedbackEvent.match_result_id.in_(results)))
         added = [

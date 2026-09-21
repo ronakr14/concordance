@@ -35,6 +35,7 @@ def settings() -> Settings:
     return Settings(
         JWT_SECRET=SECRET,
         DATABASE_URL="postgresql+psycopg://nobody:nothing@127.0.0.1:1/none",
+        APP_DATABASE_URL="postgresql+psycopg://nobody:nothing@127.0.0.1:1/none",
         DB_CONNECT_TIMEOUT=1,
     )
 
@@ -202,3 +203,20 @@ def test_every_response_carries_a_request_id(client: TestClient) -> None:
     echoed = client.get("/no/such/thing", headers={"X-Request-Id": "trace-me"})
     assert echoed.headers["X-Request-Id"] == "trace-me"
     assert client.get("/no/such/thing").headers["X-Request-Id"]
+
+
+def test_an_unexpected_failure_leaks_nothing_about_the_server(
+    client: TestClient, settings: Settings
+) -> None:
+    """A valid token gets past authentication and into a database that is not
+    there. The driver's error names the host, port and user; none of it, and no
+    traceback or file path, may reach the caller."""
+    token, _ = issue_access_token(
+        settings, user_id=uuid.uuid4(), email="a@example.com", role="admin"
+    )
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": {"code": "internal_error", "message": "something went wrong"}}
+    for leak in ("Traceback", "File \"", ".py", "psycopg", "127.0.0.1", "nobody", "sqlalchemy"):
+        assert leak not in response.text, leak

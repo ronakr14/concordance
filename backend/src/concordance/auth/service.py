@@ -26,7 +26,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn
 
 from sqlalchemy.orm import Session
 
@@ -181,12 +181,7 @@ def refresh(
     if stored is None:
         raise InvalidRefreshTokenError("refresh token is not recognised")
     if stored.revoked_at is not None:
-        # Presented twice. Either the client is confused or the token leaked,
-        # and the safe reading is the second one: cut every session for this
-        # user rather than issue a pair to whoever asked.
-        log.warning("auth.refresh.reuse", user_id=str(stored.user_id))
-        users.revoke_all_for_user(stored.user_id)
-        raise InvalidRefreshTokenError("refresh token has already been used")
+        _reused(users, stored.user_id)
     if stored.expires_at <= datetime.now(UTC):
         raise InvalidRefreshTokenError("refresh token has expired")
 
@@ -194,7 +189,10 @@ def refresh(
     if user is None or not user.is_active:
         raise InvalidRefreshTokenError("refresh token is not recognised")
 
-    users.revoke_refresh_token(token_hash)
+    if not users.revoke_refresh_token(token_hash):
+        # Another request revoked it between our read and our update: the same
+        # token presented twice, concurrently.
+        _reused(users, stored.user_id)
     pair = _issue(session, settings, user)
     AuditRepository(session).record(
         action="user.refresh",
@@ -205,6 +203,15 @@ def refresh(
         request_id=request_id,
     )
     return pair
+
+
+def _reused(users: UserRepository, user_id: uuid.UUID) -> NoReturn:
+    """Presented twice. Either the client is confused or the token leaked, and
+    the safe reading is the second one: cut every session for this user rather
+    than issue a pair to whoever asked."""
+    log.warning("auth.refresh.reuse", user_id=str(user_id))
+    users.revoke_all_for_user(user_id)
+    raise InvalidRefreshTokenError("refresh token has already been used")
 
 
 def logout(
