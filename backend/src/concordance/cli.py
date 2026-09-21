@@ -1663,6 +1663,13 @@ def preflight(
     frontend: Annotated[
         Path | None, typer.Option("--frontend", help="Frontend directory to check `npm ci` in.")
     ] = None,
+    skip_migrations: Annotated[
+        bool,
+        typer.Option(
+            "--skip-migrations",
+            help="Leave the migration check to the caller. For `make up`, which upgrades next.",
+        ),
+    ] = False,
 ) -> None:
     """Refuse to start a system that cannot work: env, database, migrations, ports.
 
@@ -1683,7 +1690,9 @@ def preflight(
             raise typer.Exit(code=2)
         parsed.append((name.strip(), int(port)))
 
-    report = run_preflight(settings, ports=parsed, frontend=frontend)
+    report = run_preflight(
+        settings, ports=parsed, frontend=frontend, migrations=not skip_migrations
+    )
     for check in report.checks:
         typer.secho(check.line(), fg="green" if check.ok else "red")
     if report.ok:

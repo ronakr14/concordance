@@ -191,6 +191,14 @@ def cov(args: list[str]) -> int:
     return _run(PY, "-m", "pytest", "--cov=concordance", "--cov-report=term-missing")
 
 
+def perf(args: list[str]) -> int:
+    """The 50k x 5k engine budget. Opt-in in the suite, so this sets the switch."""
+    import os
+
+    os.environ["CONCORDANCE_PERF_TESTS"] = "1"
+    return _run(PY, "-m", "pytest", "tests/perf", "-s", *args)
+
+
 def lint(args: list[str]) -> int:
     return _run(PY, "-m", "ruff", "check", "backend/src", "tests", "tasks.py")
 
@@ -296,6 +304,7 @@ TARGETS: dict[str, Callable[[list[str]], int]] = {
     "test": test,
     "test-unit": test_unit,
     "cov": cov,
+    "perf": perf,
     "lint": lint,
     "fmt": fmt,
     "typecheck": typecheck,

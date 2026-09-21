@@ -134,6 +134,14 @@ jobs:
           --cov-report=term-missing --cov-fail-under=80
           -q
 
+      - name: Coverage gate per package
+        # The gate above is on the two packages combined, and matching/ is large
+        # and well covered enough to carry api/ over the line on its own. Each
+        # is held to 80% separately, from the data the suite already wrote.
+        run: |
+          python -m coverage report --include="*/concordance/matching/*" --fail-under=80
+          python -m coverage report --include="*/concordance/api/*" --fail-under=80
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest

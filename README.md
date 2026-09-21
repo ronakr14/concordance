@@ -21,9 +21,29 @@ change moved.
 
 ## Quick start
 
-Prerequisites: **Python 3.12**, **Node 22**, and a **Postgres 17** connection string
+Prerequisites: **Python 3.12**, **Node 22**, and a **Postgres 17** database you own
 (the project is developed against a hosted [Neon](https://neon.tech) branch — nothing
 needs installing locally). There is no container runtime anywhere in this project.
+
+`make` is optional. Every target is a thin wrapper over `tasks.py`, so on a machine
+without it — Windows ships none — `make up` is `python tasks.py up`, and `make up
+DETACH=1` is `python tasks.py up DETACH=1`.
+
+**Once per database, before the first start**, as the owning role. The application
+connects as a second role that does not own the tables, because an owner can never be
+revoked from its own table and `audit_logs` is meant to be append-only. Create it
+before the migrations run: they grant it its privileges, and skip the grants if it
+does not exist yet.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE ROLE concordance_app LOGIN PASSWORD '<choose one>';
+GRANT CONNECT ON DATABASE <your database> TO concordance_app;
+GRANT USAGE ON SCHEMA public TO concordance_app;
+```
+
+`DATABASE_URL` is the owner, used for migrations and nothing else routine;
+`APP_DATABASE_URL` is `concordance_app`, and is what the API and worker use.
 
 ```
 git clone <this repository>
@@ -40,16 +60,17 @@ make up
 ```
 
 `make up` is the one command. It runs a preflight, applies the migrations, and starts
-the API, the job worker and the web app as three labelled log streams in one terminal;
-Ctrl-C stops all three. `make up DETACH=1` runs the same thing in the background, and
-`make down` stops it.
+the API, the job worker and the web app as three labelled log streams in one terminal.
+Ctrl-C stops all three, and stops them gracefully: the API drains its requests and the
+worker finishes the job in hand. `make up DETACH=1` runs the same thing in the
+background, `make logs` follows it, and `make down` stops it the same way.
 
 If anything is missing, the preflight says so before a single process is started:
 
 ```
 ok   environment - 3 required keys set
 ok   database - both roles answer
-ok   migrations - at e8b3f1c62d94
+ok   migrations - not checked - upgraded to head next
 ok   port 8000 - api - free
 ok   port 5173 - web - free
 ok   web dependencies - node_modules present

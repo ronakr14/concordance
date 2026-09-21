@@ -9,12 +9,12 @@ RUN := $(PY) tasks.py
 # Forward make-style variables through to tasks.py.
 VARS := $(foreach v,CORRUPTION PROVIDERS SANCTIONS SEED LIMIT SCENARIO STRATEGY LEVELS STRATEGIES WORKERS MAX_CANDIDATES PORT WEB_PORT DETACH YES KEEP,$(if $($(v)),$(v)=$($(v))))
 
-.PHONY: seed verify inspect fit eval sweep test test-unit cov lint fmt typecheck clean \
+.PHONY: seed verify inspect fit eval sweep test test-unit cov perf lint fmt typecheck clean \
         up down ps logs preflight reset-db demo migrate load api worker web web-build client e2e help
 
 help:
 	@$(RUN) help
 
-seed verify inspect fit eval sweep reconcile worker migrate load test test-unit cov lint fmt typecheck clean \
+seed verify inspect fit eval sweep reconcile worker migrate load test test-unit cov perf lint fmt typecheck clean \
 api web web-build client e2e up down ps logs preflight reset-db demo:
 	@$(RUN) $@ $(VARS)

@@ -38,6 +38,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Queue
@@ -47,6 +48,9 @@ FRONTEND = ROOT / "frontend"
 RUN_DIR = ROOT / ".run"
 PIDFILE = RUN_DIR / "up.json"
 LOGFILE = RUN_DIR / "up.log"
+#: `down` asks a detached supervisor to stop by creating this file, so the
+#: supervisor runs its own orderly shutdown rather than being killed mid-way.
+STOPFILE = RUN_DIR / "stop"
 WINDOWS = os.name == "nt"
 
 #: How long a child gets to exit on its own before the tree is killed.
@@ -64,6 +68,11 @@ class Child:
     name: str
     argv: list[str]
     cwd: Path
+    #: Whether the child shuts down cleanly on Ctrl-Break. api and worker do
+    #: (uvicorn drains in-flight requests; the worker finishes its job in hand).
+    #: The web dev server is an npm `cmd.exe` shim that answers Ctrl-Break with
+    #: "Terminate batch job (Y/N)?", and holds no state worth draining.
+    graceful: bool = True
     proc: subprocess.Popen[str] | None = None
 
 
@@ -128,6 +137,24 @@ def _kill_tree(pid: int) -> None:
         os.killpg(os.getpgid(pid), signal.SIGTERM)
 
 
+def _ask_to_stop(child: Child) -> None:
+    """Ctrl-Break to the child's own process group: the Windows Ctrl-C.
+
+    Each child runs in a group of its own, and Windows disables Ctrl-C inside
+    such a group, so Ctrl-Break is the signal that reaches it. It needs a
+    console shared with this process; without one it raises, and the child is
+    stopped the hard way instead.
+    """
+    assert child.proc is not None
+    if not child.graceful:
+        _kill_tree(child.proc.pid)
+        return
+    try:
+        os.kill(child.proc.pid, signal.CTRL_BREAK_EVENT)  # type: ignore[attr-defined]
+    except OSError:
+        _kill_tree(child.proc.pid)
+
+
 def _stop(children: list[Child], say) -> None:
     """Ask every child to stop, then insist. Idempotent: a dead child is fine."""
     alive = [c for c in children if c.proc is not None and c.proc.poll() is None]
@@ -135,7 +162,7 @@ def _stop(children: list[Child], say) -> None:
         assert child.proc is not None
         say(f"stopping {child.name} (pid {child.proc.pid})")
         if WINDOWS:
-            _kill_tree(child.proc.pid)
+            _ask_to_stop(child)
         else:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(os.getpgid(child.proc.pid), signal.SIGINT)
@@ -144,7 +171,17 @@ def _stop(children: list[Child], say) -> None:
         assert child.proc is not None
         remaining = max(0.0, deadline - time.monotonic())
         try:
-            child.proc.wait(timeout=remaining)
+            code = child.proc.wait(timeout=remaining)
+            # The exit code is the evidence of how it stopped: 0 is a clean
+            # shutdown, anything else is a kill or a crash on the way out -
+            # with one exception. uvicorn re-raises the signal it caught once
+            # its shutdown is complete, and on Windows the default action for
+            # SIGBREAK is `_exit(3)`.
+            if not child.graceful:
+                say(f"{child.name} stopped (killed - it holds nothing to drain)")
+            else:
+                clean = code == 0 or (WINDOWS and code == 3)
+                say(f"{child.name} stopped {'cleanly' if clean else 'abruptly'} (exit {code})")
         except subprocess.TimeoutExpired:
             say(f"{child.name} did not stop in {GRACE_SECONDS:.0f}s - killing the tree")
             _kill_tree(child.proc.pid)
@@ -190,7 +227,7 @@ def _children(py: str, npm: str, port: int, web_port: int) -> list[Child]:
     return [
         Child("api", [py, "-m", "concordance.cli", "api", "serve", "--port", str(port)], ROOT),
         Child("worker", [py, "-m", "concordance.cli", "jobs", "worker"], ROOT),
-        Child("web", [npm, "run", "dev", "--", "--port", str(web_port)], FRONTEND),
+        Child("web", [npm, "run", "dev", "--", "--port", str(web_port)], FRONTEND, graceful=False),
     ]
 
 
@@ -226,20 +263,10 @@ def up(py: str, npm: str, port: int = 8000, web_port: int = 5173, skip_preflight
         print(_label("up", message, colour), flush=True)
 
     if not skip_preflight:
-        say("preflight")
-        rc = subprocess.call(
-            [py, "-m", "concordance.cli", "preflight",
-             "--ports", f"api:{port},web:{web_port}", "--frontend", str(FRONTEND)],
-            cwd=str(ROOT),
-        )
+        rc = _preflight_and_migrate(py, port, web_port, say)
         if rc != 0:
-            say("preflight failed - nothing was started")
             return rc
-        say("migrations")
-        rc = subprocess.call([py, "-m", "concordance.cli", "db", "upgrade", "head"], cwd=str(ROOT))
-        if rc != 0:
-            say("migration failed - nothing was started")
-            return rc
+    STOPFILE.unlink(missing_ok=True)  # a request left by an earlier start is not for us
 
     children = _children(py, npm, port, web_port)
     sink: Queue[tuple[str, str | None]] = Queue()
@@ -274,6 +301,10 @@ def up(py: str, npm: str, port: int = 8000, web_port: int = 5173, skip_preflight
             try:
                 name, line = sink.get(timeout=0.5)
             except Empty:
+                if STOPFILE.is_file():
+                    STOPFILE.unlink(missing_ok=True)
+                    say("stop requested - stopping")
+                    break
                 # A child that died without closing its pipe (killed, rather
                 # than exited) is noticed here rather than never.
                 for child in children:
@@ -314,6 +345,33 @@ def _stream_open(child: Child) -> bool:
 # --------------------------------------------------------------------------
 
 
+def _preflight_and_migrate(
+    py: str, port: int, web_port: int, say: Callable[[str], object]
+) -> int:
+    """Preflight, then upgrade to head. Nothing is spawned unless both pass.
+
+    The preflight skips its migration check because the next step is the
+    upgrade: checking first would refuse a fresh clone's database, which is at
+    base, and one a pull has left a migration behind - exactly the databases the
+    upgrade exists to fix. An unreachable database still fails the preflight,
+    and a failed upgrade still stops the start.
+    """
+    say("preflight")
+    rc = subprocess.call(
+        [py, "-m", "concordance.cli", "preflight", "--skip-migrations",
+         "--ports", f"api:{port},web:{web_port}", "--frontend", str(FRONTEND)],
+        cwd=str(ROOT),
+    )
+    if rc != 0:
+        say("preflight failed - nothing was started")
+        return rc
+    say("migrations")
+    rc = subprocess.call([py, "-m", "concordance.cli", "db", "upgrade", "head"], cwd=str(ROOT))
+    if rc != 0:
+        say("migration failed - nothing was started")
+    return rc
+
+
 def up_detached(py: str, port: int = 8000, web_port: int = 5173) -> int:
     """Start the same supervisor in the background, logging to `.run/up.log`.
 
@@ -324,24 +382,18 @@ def up_detached(py: str, port: int = 8000, web_port: int = 5173) -> int:
     if PIDFILE.is_file():
         print(f"a start is already recorded in {PIDFILE} - run `python tasks.py down` first")
         return 1
-    rc = subprocess.call(
-        [py, "-m", "concordance.cli", "preflight",
-         "--ports", f"api:{port},web:{web_port}", "--frontend", str(FRONTEND)],
-        cwd=str(ROOT),
-    )
+    rc = _preflight_and_migrate(py, port, web_port, print)
     if rc != 0:
-        print("preflight failed - nothing was started")
-        return rc
-    rc = subprocess.call([py, "-m", "concordance.cli", "db", "upgrade", "head"], cwd=str(ROOT))
-    if rc != 0:
-        print("migration failed - nothing was started")
         return rc
 
     RUN_DIR.mkdir(exist_ok=True)
     log = LOGFILE.open("w", encoding="utf-8")
     kwargs: dict[str, object] = {}
     if WINDOWS:
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        # A console, but a hidden one, rather than none. Without a console the
+        # supervisor cannot send its children Ctrl-Break, and every stop would
+        # be a kill.
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(
@@ -359,7 +411,12 @@ def up_detached(py: str, port: int = 8000, web_port: int = 5173) -> int:
 
 
 def down() -> int:
-    """Stop a detached start, by the pids it recorded."""
+    """Stop a detached start: ask the supervisor first, then kill by recorded pid.
+
+    Asking lets the supervisor run its orderly shutdown - api drains its
+    requests, the worker finishes the job in hand and releases its claim. Only
+    a supervisor that does not answer in time is killed, with its children.
+    """
     if not PIDFILE.is_file():
         print(f"nothing to stop - no {PIDFILE}")
         return 0
@@ -368,6 +425,15 @@ def down() -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"{PIDFILE} is unreadable ({exc}); delete it and stop the processes by hand")
         return 1
+    STOPFILE.write_text("stop", encoding="utf-8")
+    deadline = time.monotonic() + GRACE_SECONDS + 15
+    while PIDFILE.is_file() and time.monotonic() < deadline:
+        time.sleep(0.5)
+    STOPFILE.unlink(missing_ok=True)
+    if not PIDFILE.is_file():
+        print("stopped cleanly")
+        return 0
+    print("the supervisor did not stop in time - killing the process trees")
     pids = [state.get("supervisor"), *state.get("children", {}).values()]
     for pid in [p for p in pids if isinstance(p, int)]:
         _kill_tree(pid)

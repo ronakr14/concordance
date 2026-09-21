@@ -197,6 +197,7 @@ def run_preflight(
     ports: Iterable[tuple[str, int]] = (),
     frontend: Path | None = None,
     alembic_ini: Path | None = None,
+    migrations: bool = True,
 ) -> PreflightReport:
     """Run every check, ordered so one cause is not reported as three problems.
 
@@ -204,11 +205,18 @@ def run_preflight(
     failed environment check short-circuits the two that depend on it. They are
     reported as not checked rather than silently dropped, because a report with
     rows missing reads as a report that did less than it says.
+
+    `migrations=False` is for `make up`, which upgrades to head straight after
+    this. Checking first would refuse exactly the database the upgrade is about
+    to fix: a fresh clone's is at base, and a pull that brings a migration
+    leaves it one behind. The row is still printed, saying who does it instead.
     """
     checks = [check_env(settings)]
     if checks[0].ok:
         checks.append(check_database(settings))
-        if checks[-1].ok:
+        if checks[-1].ok and not migrations:
+            checks.append(Check("migrations", True, "not checked - upgraded to head next"))
+        elif checks[-1].ok:
             checks.append(check_migrations(settings, alembic_ini))
         else:
             checks.append(Check("migrations", False, "not checked - the database is unreachable"))

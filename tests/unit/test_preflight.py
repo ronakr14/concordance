@@ -160,3 +160,27 @@ def test_a_passing_report_is_ok() -> None:
 def test_the_rendered_line_says_which_way_it_went() -> None:
     assert pf.Check("ports", True, "free").line().startswith("ok  ")
     assert pf.Check("ports", False, "held").line().startswith("FAIL")
+
+
+def test_the_launcher_leaves_migrations_to_the_upgrade_that_follows(monkeypatch: Any) -> None:
+    """`make up` upgrades straight after the preflight. A database at base - a
+    fresh clone's - must not be refused for the one thing the next step fixes."""
+    monkeypatch.setattr(pf, "check_database", lambda *_: pf.Check("database", True, "ok"))
+    called: list[str] = []
+    monkeypatch.setattr(pf, "check_migrations", lambda *_: called.append("mig"))
+
+    report = pf.run_preflight(_settings(), migrations=False)
+
+    assert called == []
+    assert report.ok
+    assert report.checks[2].name == "migrations"
+    assert "upgraded to head next" in report.checks[2].detail
+
+
+def test_skipping_migrations_still_refuses_an_unreachable_database(monkeypatch: Any) -> None:
+    monkeypatch.setattr(pf, "check_database", lambda *_: pf.Check("database", False, "no answer"))
+
+    report = pf.run_preflight(_settings(), migrations=False)
+
+    assert not report.ok
+    assert [c.name for c in report.failures][:1] == ["database"]

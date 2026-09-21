@@ -1347,17 +1347,17 @@ failure rather than an application one — which is still exactly why this stage
 - [x] `make logs` / `make ps` either work natively or are removed rather than left as stubs that lie — both are real. `ps` prints the recorded pids and URLs, `logs` tails a detached start's log and says so plainly when the start was in the foreground instead
 - [x] `make down` stops a detached `make up` — by the pids in `.run/up.json`, supervisor and children alike, each as a tree. Verified against a live detached start: four trees stopped, no listener left on either port
 - [x] `make reset-db` truncates the Neon schema, prompting for confirmation first ⭐ — replaces "drops volumes". Renamed from `make clean` deliberately: `clean` already meant "remove caches", and giving a destructive action a name people type without thinking is how data gets lost. `concordance db reset` lists every table with its row count, then asks for the word `RESET` rather than a keystroke; `--recreate` keeps the old drop-to-base-and-remigrate path for when the schema rather than the data is suspect. The truncate itself is covered by `tests/integration/test_db_reset.py`, which runs only under `CONCORDANCE_DESTRUCTIVE_TESTS=1` — CI sets it, a developer machine pointed at a seeded hosted database must not
-- [ ] `make up` documented in the README as the one command, with its native prerequisites stated
+- [x] `make up` documented in the README as the one command, with its native prerequisites stated — and two that were missing: `make` itself, which Windows does not ship (every target is `python tasks.py <target>`), and the `concordance_app` role, which must exist before the first migration or its grants are skipped. The one-time SQL is in the quick start, copied from what CI runs
 
 ### Tests
 
-- [ ] Coverage ≥80% on `src/concordance/matching/` ⭐
-- [ ] Coverage ≥80% on `src/concordance/api/` ⭐
-- [ ] Integration test covering the full pipeline on a small fixture
-- [ ] End-to-end test: upload → run → approve → case, through the API
-- [ ] Performance test asserting the 50k×5k run stays under the recorded budget
-- [ ] Full suite green on a second machine — CI, since there is no container to prove host-independence ⭐ — this is what "all tests run inside Docker" was for: catching a suite that only passes on the machine that wrote it
-- [ ] Flaky tests identified and fixed, not retried
+- [x] Coverage ≥80% on `src/concordance/matching/` ⭐ — 96% (2,158 statements, 94 missed), unit suite plus the API, assistant and feedback-loop integration files. CI's gate was on `matching/` and `api/` combined, so the larger, better-covered package could carry the other; a second step now holds each to 80% on its own
+- [x] Coverage ≥80% on `src/concordance/api/` ⭐ — 93% (1,457 statements, 103 missed), same run. Weakest routers: `lab.py` 46%, `configs.py` 62%, `assistant.py` 67%
+- [x] Integration test covering the full pipeline on a small fixture — `test_matching_pipeline.py`: seed 4,000 providers and 900 records, fit both models, calibrate, score every strategy, report to JSON and HTML. 20 tests, green
+- [x] End-to-end test: upload → run → approve → case, through the API — `test_api_workflow.py`, 31 tests through `TestClient`: upload and inspect, commit with a mapping, queue a run, the worker completes it, approve opens a case. Its fixture now draws records from ground truth, so it no longer depends on what the last run left current
+- [x] Performance test asserting the 50k×5k run stays under the recorded budget — `tests/perf/`, `make perf`: the engine in process, normalize through score, measured at 124 s (25 ms a record) twice running, budget 250 s. Opt-in with `CONCORDANCE_PERF_TESTS=1`, because it needs the full dataset and a fitted config. It deliberately times the engine rather than a run through Postgres: that number is mostly the WAN link to Neon, and a budget on it would fail on a slow day and pass a regression. The end-to-end Neon number is GATE 6's, still outstanding
+- [ ] Full suite green on a second machine — CI, since there is no container to prove host-independence ⭐ — **blocked: the repository has no remote yet, so CI has never run.** — this is what "all tests run inside Docker" was for: catching a suite that only passes on the machine that wrote it
+- [x] Flaky tests identified and fixed, not retried — nothing in the suite retries, and there is no retry plugin. The unit suite passes in three seeded random orders (808 each), so no test leans on another's side effects. The one intermittent integration failure was not timing but data: the API workflow fixture borrowed whatever the last run left current, and failed whenever that held no AMBIGUOUS decisions. It now draws from ground truth
 
 ### Security pass
 
@@ -1374,10 +1374,10 @@ failure rather than an application one — which is still exactly why this stage
 ### Operations
 
 - [ ] Cold start verified on a clean checkout: clone → `py -3.12 -m venv .venv` → `pip install -e .` → `npm ci` → `.env` → `make up` → `make seed` → `make demo` ⭐ — followed verbatim, not from memory
-- [ ] Startup ordering robust — the preflight refuses to spawn api or worker against an unreachable or un-migrated database ⭐
-- [ ] Graceful shutdown verified for api and worker — SIGINT drains the in-flight request and releases the worker's job claim
+- [x] Startup ordering robust — the preflight refuses to spawn api or worker against an unreachable or un-migrated database ⭐ — **the order was wrong.** The preflight's migration check failed any database not already at head, so `make up` refused before reaching its own `db upgrade head`: a fresh clone's database, at base, could never start, and nor could one a pull had left a migration behind. The launcher now runs `preflight --skip-migrations` (the row is still printed, saying the upgrade follows), then the upgrade, and a failed upgrade stops the start. An unreachable database still fails the preflight, verified against a dead port; `preflight` run by hand still checks migrations
+- [x] Graceful shutdown verified for api and worker — SIGINT drains the in-flight request and releases the worker's job claim — **it was never graceful on Windows.** Each child runs in its own process group, where Windows disables Ctrl-C, and `_stop` went straight to `taskkill /F`; `make down` force-killed the supervisor too, so `_stop` never ran. Now `_stop` sends Ctrl-Break to the api and worker groups (both handle `SIGBREAK`) and kills only after the 10 s grace; the detached supervisor has a hidden console instead of none, so it can send that; and `down` asks by writing `.run/stop`, falling back to the kill. Each child's exit is logged: api `cleanly (exit 3)` — uvicorn re-raises the signal after `Finished server process`, and Windows' default for `SIGBREAK` is `_exit(3)` — worker `cleanly (exit 0)`. The web dev server is killed outright: an npm shim answers Ctrl-Break with a Y/N prompt, and has nothing to drain. A job longer than the grace is still killed; its claim is then returned by the stale-lock reclaim
 - [x] Worker survives a lost database connection — found during the Stage 8 walkthrough setup, when Neon closed the connection mid-claim and the worker exited. The loop now backs off (1 s doubling to 30 s, reset on success) and carries on; a job whose outcome was not recorded stays `RUNNING` until the stale-lock reclaim picks it up. `test_worker_resilience.py`
-- [ ] Log output readable and structured in the `make up` terminal, with the three processes distinguishable
+- [x] Log output readable and structured in the `make up` terminal, with the three processes distinguishable — see the Native launch section: each line prefixed by source in its own colour, api and worker as structlog `key=value` events
 
 ### Documentation
 
