@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from concordance.config import Settings
@@ -53,6 +54,7 @@ from concordance.db.repositories.audit import AuditRepository
 from concordance.db.repositories.cases import CaseRepository
 from concordance.db.repositories.configs import ConfigRepository
 from concordance.db.repositories.matches import MatchRepository
+from concordance.db.retry import DEFAULT_ATTEMPTS, is_disconnect, with_reconnect
 from concordance.domain import Outcome
 from concordance.logging_setup import get_logger
 from concordance.matching.comparators import ModelKind
@@ -334,6 +336,7 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
         writer.prepare(stream.store)
         for batch in stream.chunks():
             work = [(w.record_id, w.normalized, w.candidates) for w in batch]
+            decided = []
             for outcome in engine.decide_many(work):
                 if outcome.failed or outcome.result is None:
                     report.errors.append(f"{outcome.record_id}: {outcome.error}")
@@ -344,14 +347,11 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
                         error=outcome.error,
                     )
                     continue
-                writer.write(outcome.result, adjudicator)
-            writer.flush_chunk()
-            _progress(run, engine)
-            # Committing per chunk is what makes the progress counts on the run
-            # row readable while the run is still going, and what leaves the
-            # first four thousand decisions behind when a run dies at the
-            # four-thousand-and-first.
-            session.commit()
+                # The adjudicator remembers only its latest call, and the chunk
+                # is written after every record in it is decided, so the key
+                # is taken now, beside the result it belongs to.
+                decided.append((outcome.result, getattr(adjudicator, "last_call_key", None)))
+            _persist_chunk(session, writer, run, engine, decided)
             if _cancel_requested(session, run.id):
                 # Stop between chunks, never inside one: everything committed
                 # so far is whole chunks, supersedes and conflict flags included.
@@ -367,12 +367,20 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
         raise
 
     engine.counters.absorb_adjudicator(strategy.stats())
-    if not cancelled:
-        run.status = str(RunStatus.COMPLETED)
-    run.finished_at = datetime.now(UTC)
-    _finalize(run, engine)
-    patterns = ConfigRepository(session).write_patterns(run.id, writer.tally)
-    session.commit()
+    finished_at = datetime.now(UTC)
+
+    def finish() -> int:
+        # Everything set inside, so a retry after a dropped connection - whose
+        # rollback expires `run` - sets it all again rather than half of it.
+        if not cancelled:
+            run.status = str(RunStatus.COMPLETED)
+        run.finished_at = finished_at
+        _finalize(run, engine)
+        written = ConfigRepository(session).write_patterns(run.id, writer.tally)
+        session.commit()
+        return written
+
+    patterns = with_reconnect(session, finish, what="run finish")
     log.info("reconcile.patterns", run_id=str(run.id), patterns=patterns, pairs=writer.tally.total())
 
     report.status = run.status
@@ -383,6 +391,63 @@ def reconcile(session: Session, settings: Settings, request: RunRequest) -> RunR
     report.skipped_unknown = writer.skipped_unknown
     log.info("reconcile.done", **report.as_dict())
     return report
+
+
+#: Seconds per attempt between chunk retries: 5, 10, 15, 20 - about fifty in all.
+#: Longer than a single query's retry, because what a run in its thirtieth
+#: minute is riding out is usually the network rather than the server, and
+#: losing the run costs half an hour where a query costs a second.
+CHUNK_BACKOFF = 5.0
+
+
+def _persist_chunk(
+    session: Session,
+    writer: _ResultWriter,
+    run: ReconciliationRun,
+    engine: ReconciliationEngine,
+    decided: list[tuple[Any, str | None]],
+    *,
+    attempts: int = DEFAULT_ATTEMPTS,
+    backoff: float = CHUNK_BACKOFF,
+    sleep: Callable[[float], Any] = time.sleep,
+) -> None:
+    """Write and commit one chunk's decisions, surviving a dropped connection.
+
+    A hosted database drops a connection mid-insert now and then, and a run of
+    five thousand records over a WAN link spends minutes inserting. Letting that
+    fail the run threw away every decision still to come for a fault that a
+    reconnect fixes. The decisions are already made, so a retry does not score
+    anything again: it rolls back, restores the writer to where the chunk began,
+    and writes the same decisions afresh. Anything that is not a disconnect
+    still fails the run.
+
+    Committing per chunk is what makes the progress counts on the run row
+    readable while the run is still going, and what leaves the first four
+    thousand decisions behind when a run dies at the four-thousand-and-first.
+    """
+    for attempt in range(1, attempts + 1):
+        mark = writer.checkpoint()
+        try:
+            for result, call_key in decided:
+                writer.write(result, call_key)
+            writer.flush_chunk()
+            _progress(run, engine)
+            session.commit()
+            return
+        except DBAPIError as exc:
+            if not is_disconnect(exc) or attempt == attempts:
+                raise
+            session.rollback()
+            writer.restore(mark)
+            log.warning(
+                "reconcile.chunk.retry",
+                run_id=str(writer.run_id),
+                records=len(decided),
+                attempt=attempt,
+                of=attempts,
+                error=str(exc.orig or exc)[:200],
+            )
+            sleep(backoff * attempt)
 
 
 def _adopt(session: Session, request: RunRequest) -> ReconciliationRun | None:
@@ -436,14 +501,27 @@ def _fail(
     exc: BaseException,
     engine: ReconciliationEngine | None = None,
 ) -> None:
-    failed = session.get(ReconciliationRun, run_id)
-    if failed is not None:
-        failed.status = str(RunStatus.FAILED)
-        failed.finished_at = datetime.now(UTC)
-        failed.error = f"{type(exc).__name__}: {exc}"
-        if engine is not None:
-            _finalize(failed, engine)
-        session.commit()
+    """Record the failure on the run row, retrying if the connection is down too.
+
+    A run that fails because the network dropped usually finds the network
+    still down when it tries to say so, and a row left at RUNNING reads as a
+    run still going. If even the retries fail, the log is all that is left.
+    """
+
+    def mark() -> None:
+        failed = session.get(ReconciliationRun, run_id)
+        if failed is not None:
+            failed.status = str(RunStatus.FAILED)
+            failed.finished_at = datetime.now(UTC)
+            failed.error = f"{type(exc).__name__}: {exc}"
+            if engine is not None:
+                _finalize(failed, engine)
+            session.commit()
+
+    try:
+        with_reconnect(session, mark, what="record the run's failure", backoff=CHUNK_BACKOFF)
+    except DBAPIError as unrecorded:
+        log.error("reconcile.failure_unrecorded", run_id=str(run_id), error=str(unrecorded)[:200])
     log.error("reconcile.failed", run_id=str(run_id), error=f"{type(exc).__name__}: {exc}")
 
 
@@ -577,7 +655,7 @@ class _ResultWriter:
         for case, authority, record_id in self.session.execute(active):
             self._active_cases.setdefault((authority or "", record_id), []).append(case)
 
-    def write(self, result: Any, adjudicator: Any) -> MatchResult | None:
+    def write(self, result: Any, call_key: str | None = None) -> MatchResult | None:
         entry = self._ids.get(result.record_id)
         if entry is None:
             # The dataset held a record the database does not. Skipping it is
@@ -600,7 +678,7 @@ class _ResultWriter:
             calibrated_confidence=result.confidence,
             raw_match_weight=result.match_weight,
             route=str(_ROUTE_TO_DB[result.route]),
-            llm_call_id=self._llm_call_id(result, adjudicator),
+            llm_call_id=self._llm_call_id(result, call_key),
             explanation=self._explanation(result),
             audit_sampled=self._audited(result),
         )
@@ -665,6 +743,34 @@ class _ResultWriter:
                 "llm_call_id": str(row.llm_call_id) if row.llm_call_id else None,
             },
         )
+
+    def checkpoint(self) -> dict[str, Any]:
+        """The writer's state at the start of a chunk, for `restore` after a retry.
+
+        `write` moves the current-result map, the pattern tally and the counters
+        forward as it goes; a chunk rolled back must move them back, or a replay
+        would supersede against results that were never committed and count
+        every pair twice. Case conflict flags need nothing here: they live on
+        ORM objects, which the rollback expires and reloads from the database.
+        """
+        return {
+            "current": dict(self._current),
+            "tally": Counter(self.tally),
+            "counts": (
+                self.superseded, self.conflicts, self.skipped_unknown,
+                self.ai_decisions, self.audited,
+            ),
+        }
+
+    def restore(self, mark: dict[str, Any]) -> None:
+        self._current = dict(mark["current"])
+        self.tally = Counter(mark["tally"])
+        (
+            self.superseded, self.conflicts, self.skipped_unknown,
+            self.ai_decisions, self.audited,
+        ) = mark["counts"]
+        self._pending_candidates.clear()
+        self._pending_links.clear()
 
     def flush_chunk(self) -> None:
         """Insert this chunk's results, then everything that references them."""
@@ -735,17 +841,15 @@ class _ResultWriter:
         )
         log.info("reconcile.case.conflict", case_id=str(case_id), run_id=str(self.run_id))
 
-    def _llm_call_id(self, result: Any, adjudicator: Any) -> uuid.UUID | None:
+    def _llm_call_id(self, result: Any, key: str | None) -> uuid.UUID | None:
         """Link the result to the adjudication row, when an adjudicator answered.
 
-        `last_call_key` is the cache key of the call that decided this record,
-        and the cache key is `llm_calls.cache_key`, so the join is exact rather
-        than "the most recent call, probably".
+        `key` is the adjudicator's `last_call_key` as it stood right after this
+        record was decided - the cache key of the call that decided it - and the
+        cache key is `llm_calls.cache_key`, so the join is exact rather than
+        "the most recent call, probably".
         """
-        if result.route is not Route.LLM or adjudicator is None:
-            return None
-        key = getattr(adjudicator, "last_call_key", None)
-        if not key:
+        if result.route is not Route.LLM or not key:
             return None
         if key not in self._llm_calls:
             found = self.session.scalar(select(LlmCall.id).where(LlmCall.cache_key == key))

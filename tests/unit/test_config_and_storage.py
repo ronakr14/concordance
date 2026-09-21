@@ -150,3 +150,22 @@ def test_a_blank_optional_path_means_unset_as_the_example_file_says(
     assert s.LLM_PRICE_TABLE is None
     assert s.LLM_CA_BUNDLE is None
     assert s.llm_cache_dir.parts[-2:] == (".cache", "llm")
+
+
+@pytest.mark.unit
+def test_an_env_overlay_is_layered_over_env_and_a_missing_one_is_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from concordance import config
+
+    monkeypatch.delenv("CONCORDANCE_ENV_FILE", raising=False)
+    assert config._env_files()[-1] == ".env"
+
+    overlay = tmp_path / ".env.demo"
+    overlay.write_text("DATABASE_URL=postgresql+psycopg://o:p@h/demo\n", encoding="utf-8")
+    monkeypatch.setenv("CONCORDANCE_ENV_FILE", str(overlay))
+    assert config._env_files()[-1] == overlay  # last, so it wins
+
+    monkeypatch.setenv("CONCORDANCE_ENV_FILE", str(tmp_path / "absent"))
+    with pytest.raises(RuntimeError, match="does not exist"):
+        config._env_files()

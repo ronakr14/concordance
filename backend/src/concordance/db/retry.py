@@ -59,6 +59,13 @@ _CONNECTION_PHRASES = (
     "consuming input failed",
     "ssl syscall error",
     "connection reset",
+    # The client's own network, rather than the server. A reconnect after a
+    # dropped connection is exactly when a flaky link shows up as a failed DNS
+    # lookup, and it clears as quickly as the drop did.
+    "failed to resolve host",
+    "could not translate host name",
+    "temporary failure in name resolution",
+    "name or service not known",
 )
 
 

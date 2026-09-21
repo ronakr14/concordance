@@ -7,6 +7,7 @@ keeps the matching engine free of ambient state.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -17,6 +18,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def _env_files() -> tuple[Path | str, ...]:
+    """`.env`, then the file `CONCORDANCE_ENV_FILE` names, if any, on top of it.
+
+    The overlay is how one checkout serves two databases: `.env` holds the main
+    one, and `CONCORDANCE_ENV_FILE=.env.demo` swaps in the demo database's two
+    URLs for one command, `make up` or `make demo` included, without editing
+    `.env`. Later files win. A named overlay that does not exist is an error,
+    because pydantic would otherwise skip it silently and the command would run
+    against the main database instead.
+    """
+    files: tuple[Path | str, ...] = (_REPO_ROOT / ".env", ".env")
+    overlay = os.environ.get("CONCORDANCE_ENV_FILE", "").strip()
+    if not overlay:
+        return files
+    path = Path(overlay) if Path(overlay).is_absolute() else _REPO_ROOT / overlay
+    if not path.is_file():
+        raise RuntimeError(f"CONCORDANCE_ENV_FILE names {path}, which does not exist")
+    return (*files, path)
+
+
 class Settings(BaseSettings):
     """Every knob the system has, with the stage that first uses it noted."""
 
@@ -25,7 +46,7 @@ class Settings(BaseSettings):
     # env_file silently finds nothing rather than failing - which looks exactly
     # like a setting the user forgot to write.
     model_config = SettingsConfigDict(
-        env_file=(_REPO_ROOT / ".env", ".env"),
+        env_file=_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,

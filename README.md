@@ -45,6 +45,14 @@ GRANT USAGE ON SCHEMA public TO concordance_app;
 `DATABASE_URL` is the owner, used for migrations and nothing else routine;
 `APP_DATABASE_URL` is `concordance_app`, and is what the API and worker use.
 
+**A second database** — for the demo, or anything destructive — needs no second
+checkout. Create it (owned by the same owner role, not by one of the application
+roles: on Postgres 15+ the database owner also owns the `public` schema), run the
+setup SQL above in it, and put its two URLs in `.env.demo`. Then
+`CONCORDANCE_ENV_FILE=.env.demo` in front of any command — `make demo`, `make up` —
+layers that file over `.env` for that command only. Any `.env.*` other than
+`.env.example` is gitignored.
+
 ```
 git clone <this repository>
 cd provider-reconciliation

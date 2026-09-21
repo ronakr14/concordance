@@ -45,6 +45,11 @@ SEED = 20260914
 CORRUPTION = 0.5
 PROVIDERS = 50_000
 SANCTIONS = 5_000
+#: The version `match fit` gives the fitted config at this seed and level. Run A
+#: is always scored with it and the looser config always derived from it, by
+#: name, so rebuilding with KEEP=1 - after which the looser one is the active
+#: config - does not score run A with the looser config or loosen it twice.
+BASE_VERSION = f"config_c{CORRUPTION:.2f}_s{SEED}"
 
 DEMO_USERS = [
     ("[REDACTED_EMAIL_ADDRESS_5]", "demo-admin-password", "admin"),
@@ -114,18 +119,18 @@ def second_config(delta: float = 0.06) -> dict[str, Any]:
     top-level columns are a summary.
     """
     from concordance.config import get_settings
-    from concordance.db.repositories.configs import ConfigRepository
+    from concordance.db.repositories.matches import MatchRepository
     from concordance.db.session import session_scope
     from concordance.jobs.reconcile import import_scoring_config
     from concordance.matching.scoring_config import ScoringConfig
 
     with session_scope(get_settings()) as session:
-        active = ConfigRepository(session).active()
-        if active is None:
-            raise SystemExit("no active scoring config - the first run activates one")
+        base = MatchRepository(session).get_config(BASE_VERSION)
+        if base is None:
+            raise SystemExit(f"no scoring config {BASE_VERSION} - run A imports it, so run A first")
 
-        payload = json.loads(json.dumps(active.params))
-        version = f"{active.version}-demo-looser"
+        payload = json.loads(json.dumps(base.params))
+        version = f"{BASE_VERSION}-demo-looser"
         payload["config_id"] = version
         moved: dict[str, tuple[float, float]] = {}
         for kind, thresholds in payload["thresholds"].items():
@@ -145,8 +150,17 @@ def second_config(delta: float = 0.06) -> dict[str, Any]:
                 "differently and the diff has something real to show."
             ),
         )
-        row.parent_id = active.id
+        row.parent_id = base.id
         return {"id": str(row.id), "version": version, "moved": moved}
+
+
+def base_config_exists() -> bool:
+    from concordance.config import get_settings
+    from concordance.db.repositories.matches import MatchRepository
+    from concordance.db.session import session_scope
+
+    with session_scope(get_settings()) as session:
+        return MatchRepository(session).get_config(BASE_VERSION) is not None
 
 
 def newest_runs(limit: int = 2) -> list[dict[str, str]]:
@@ -297,6 +311,9 @@ def main(argv: list[str]) -> int:
     users = ensure_users()
 
     _step(6, total, "run the reconciliation")
+    if base_config_exists():
+        # A rebuild: the looser config may be the active one by now.
+        _cli("configs", "activate", BASE_VERSION, "--reason", "demo rebuild: run A")
     _cli("run", "reconcile", "--strategy", "probabilistic", "--seed", str(SEED))
 
     _step(7, total, "a second config, and a second run to diff against the first")
