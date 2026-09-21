@@ -63,9 +63,9 @@ so a rolling restart never abandons work mid-record.
 
 ### The scheduler
 
-There is no cron container and no APScheduler. A scheduled job is a kind, an interval and
+There is no cron job and no APScheduler. A scheduled job is a kind, an interval and
 the last time it was enqueued; the worker asks what is due on each pass of its loop. Two
-properties follow that a cron container does not give you:
+properties follow that an external scheduler does not give you:
 
 - **Catch-up is explicit.** A worker that was down over the weekend enqueues the missed run
   at startup, because the question is "how long since this last ran", not "did the clock

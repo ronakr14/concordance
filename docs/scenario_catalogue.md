@@ -71,6 +71,34 @@ Every applied corruption is recorded per record in `ground_truth.corruption_prof
 as `{family, op, side, before, after}`. That is what makes a failure explicable: when the
 engine misses a record, the profile says exactly what was done to it.
 
+## How the engine does on each
+
+The probabilistic strategy with no adjudicator, corruption 0.5, config
+`config_c0.50_s20260914` (`reports/eval_probabilistic_0.5.json`). For a scenario
+whose right answer is `MATCH` the column that matters is recall, and precision
+shows whether a miss was a wrong provider or a referral; for the others it is the
+share answered correctly, and the wrongly-matched count.
+
+| Scenario | Right answer | Correct | Wrongly matched | Notes |
+|---|---|---:|---:|---|
+| `exact_npi` | `MATCH` | 97.7% | 0 | the rest go to review, not astray |
+| `org_type_disagreement` | `MATCH` | 99.0% | 0 | |
+| `org_dba` | `MATCH` | 98.7% | 0 | |
+| `org_exact` | `MATCH` | 98.0% | 0 | |
+| `org_acronym` | `MATCH` | 98.0% | 0 | |
+| `sentinel_npi` | `MATCH` | 93.8% | 1 | the only wrong provider in the file |
+| `name_variation` | `MATCH` | 93.7% | 0 | |
+| `missing_npi` | `MATCH` | 91.9% | 0 | |
+| `address_variation` | `MATCH` | 66.4% | 0 | weakest; every miss is a referral (see `matching_engine.md` §9) |
+| `ambiguous` | `AMBIGUOUS` | 92.3% | 16 | declines to guess, as it should |
+| `org_unmatched` | `NO_MATCH` | 94.5% | 6 | |
+| `org_false_positive_bait` | `NO_MATCH` | 88.0% | 5 | |
+| `unmatched` | `NO_MATCH` | 83.2% | 0 | the rest go to review |
+| `false_positive_bait` | `NO_MATCH` | 10.7% | 6 | most go to review: near the line by construction |
+
+A low "correct" on a negative scenario mostly means *referred*, not *wrong*: the
+wrongly-matched column is the one that costs an innocent provider.
+
 ## Reading the dataset
 
 ```

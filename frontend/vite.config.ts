@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // The browser talks to the API through `/api` on its own origin - in
-// development through this proxy, in the container through nginx. Same origin
+// development and under `vite preview` through this proxy. Same origin
 // means no CORS preflight, and it is what lets the refresh cookie be
 // SameSite=Strict and scoped to `/api/auth`.
 const API_TARGET = process.env.CONCORDANCE_API ?? "http://127.0.0.1:8000";

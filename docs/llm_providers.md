@@ -67,7 +67,7 @@ production swap cheap: point `LLM_MODEL` at a paid model id and nothing else cha
 | `meta-llama/llama-3.3-70b-instruct` | OpenRouter | 131k | $0.10 / $0.32 |
 | `qwen/qwen-2.5-72b-instruct` | OpenRouter | 32k | $0.36 / $0.40 |
 
-Verified live against both providers on 2026-09-16. Model ids rot: Groq decommissions
+Verified live against both providers on 2026-09-16; the two defaults (`openai/gpt-oss-20b` on Groq, `poolside/laguna-s-2.1:free` on OpenRouter) re-checked with `concordance llm ping` on 2026-09-21. Model ids rot: Groq decommissions
 models outright (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant` and `gemma2-9b-it`
 all returned 404 or "decommissioned" on that date) and OpenRouter retires a `:free`
 variant when its upstream sponsor stops serving it. `concordance llm ping` is the check
@@ -262,6 +262,7 @@ GROQ_API_KEY=...
 OPENROUTER_API_KEY=...
 LLM_TIMEOUT_SECONDS=30
 LLM_MAX_ATTEMPTS=3                   # attempts per provider before failover
+LLM_MAX_TOKENS=2000                  # completion budget; sized for reasoning models
 LLM_TOP_K=3                          # candidates shown to the model
 LLM_CACHE_DIR=                       # blank: .cache/llm/
 LLM_PRICE_TABLE=                     # blank: the built-in table

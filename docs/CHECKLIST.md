@@ -1382,7 +1382,7 @@ failure rather than an application one — which is still exactly why this stage
 ### Documentation
 
 - [x] `README.md`: one-paragraph pitch leading with the 90%-incorrect-data problem ⭐
-- [ ] README: architecture diagram
+- [x] README: architecture diagram — the pipeline diagram was already there; added a Mermaid runtime diagram beside it: the three processes, which database role each connects as, the append-only audit log, the assistant's read-only role, and the only outbound calls
 - [ ] README: **reliability diagram screenshot** ⭐
 - [ ] README: **robustness curve screenshot** ⭐
 - [ ] README: Investigation page screenshot ⭐
@@ -1391,12 +1391,12 @@ failure rather than an application one — which is still exactly why this stage
 - [x] README: measured results table — F1 against the corruption dial, ECE before and after isotonic, blocking recall against candidate cost, and F1 across review rounds ⭐. The LLM cost saving is the one number still missing, because its experiment is still running
 - [x] README: tech stack and the reasoning behind the non-obvious choices — in the README's architecture section, and at length in `docs/architecture.md` §9, which gives each choice the alternative it was made against
 - [x] `docs/architecture.md` complete — the three processes, the request path, the four protocol seams and their two implementations each, the three database roles and why the app role must not own its tables, the assistant's two defences, and what is deliberately absent
-- [ ] `docs/data_dictionary.md` complete and current
-- [ ] `docs/matching_engine.md` complete and current
-- [ ] `docs/scenario_catalogue.md` complete and current
-- [ ] `docs/llm_providers.md` complete and current
-- [ ] `docs/demo_script.md` written ⭐
-- [ ] PLAN §11 open questions all marked resolved
+- [x] `docs/data_dictionary.md` complete and current — diffed against the live schema: all 21 tables, every column and its nullability matched; the enumerations table was missing `reconciliation_runs.strategy`. `tests/integration/test_data_dictionary.py` now reads both and fails on any difference, so "current" stays true when a column is added
+- [x] `docs/matching_engine.md` complete and current — the threshold, grey-band and negatives numbers in §5 and §9 were from an earlier fit and are now those of `config_c0.50_s20260914` and its report (the calibration table and headline F1 already were). New §10: the run engine and `ENGINE_VERSION`, and how a retune uses labels — semi-supervised EM, label denoising, thresholds from the population. File table extended
+- [x] `docs/scenario_catalogue.md` complete and current — counts match ground truth for all fourteen scenarios. Added the engine's result on each, with the wrongly-matched count beside the share correct, because on a negative scenario a low score mostly means *referred*
+- [x] `docs/llm_providers.md` complete and current — `LLM_MAX_TOKENS` was undocumented; both default models re-verified live with `llm ping`. `.env.example` now carries every setting (`LLM_MAX_TOKENS` and `LLM_CA_BUNDLE` were missing), and checking it found a bug: a blank optional path in `.env`, which is how the example file ships `LLM_CACHE_DIR=`, became the repository root rather than unset — a cache written into the checkout and a price table read from a directory. Blank now means unset, with a test
+- [x] `docs/demo_script.md` written ⭐ — eight scenarios with what to open, what to point at and what to say, ~9 min 50 s by target, plus a recovery table. Not yet rehearsed; the Demo section below is where it gets timed. Writing it against `scripts/demo.py` found that script had never run correctly: its sample queries named columns that do not exist (`record_key`, `score`) and a scenario tag that does not (`exact`); the "looser" config edited a key the config does not have, so run B would have decided exactly as run A and the diff scenario would have shown nothing — and its floor of 0.5 would have *raised* the individual threshold; the activation query named a missing column; and a rebuild with existing users would have crashed. All fixed, the config built through `ScoringConfig` and `import_scoring_config`, and dry-run against Neon inside a rolled-back transaction. `make demo` also now runs a Lab sweep, without which scenario 6 is an empty page
+- [x] PLAN §11 open questions all marked resolved — all six were; spot-checked the two least obvious against the code (the expiry catch-up on worker start, the structured-output capability flag)
 
 ### Demo
 

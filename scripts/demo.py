@@ -16,6 +16,7 @@ What it leaves behind:
 - a fitted, activated scoring config, and a second config whose accept
   threshold is lower, so two runs of the same records disagree on purpose;
 - two completed runs to diff, and one of them to replay;
+- a completed corruption sweep for the Lab page;
 - a review queue with real ambiguous records in it;
 - a workbook of records under unfamiliar headers, for the column-mapping
   screen to have work to do.
@@ -31,7 +32,6 @@ import json
 import subprocess
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +79,6 @@ def ensure_users() -> dict[str, str]:
     from concordance.auth import service as auth
     from concordance.config import get_settings
     from concordance.db.session import session_scope
-    from concordance.errors import DomainError
 
     settings = get_settings()
     ids: dict[str, str] = {}
@@ -89,7 +88,7 @@ def ensure_users() -> dict[str, str]:
                 user = auth.register(session, settings, email=email, password=password, role=role)
                 ids[role] = str(user.id)
                 print(f"    created {role} {email}")
-            except DomainError:
+            except auth.EmailTakenError:
                 session.rollback()
                 from sqlalchemy import text
 
@@ -102,70 +101,52 @@ def ensure_users() -> dict[str, str]:
 
 
 def second_config(delta: float = 0.06) -> dict[str, Any]:
-    """A copy of the active config with a lower accept threshold.
+    """A copy of the active config with each model's accept threshold lowered.
 
     The point of the diff scenario is a config change whose effect is visible
     but not catastrophic: move the accept threshold down and some records that
     were left to a human become automatic accepts. A change nobody can see
     proves nothing, and a change that flips everything proves the wrong thing.
+
+    Built through `ScoringConfig` and `import_scoring_config`, the same path a
+    fitted config takes, so the row is shaped exactly as a run reads it. The
+    thresholds a run applies are the per-model ones inside `params`; the
+    top-level columns are a summary.
     """
-    from sqlalchemy import text
-
     from concordance.config import get_settings
+    from concordance.db.repositories.configs import ConfigRepository
     from concordance.db.session import session_scope
+    from concordance.jobs.reconcile import import_scoring_config
+    from concordance.matching.scoring_config import ScoringConfig
 
-    settings = get_settings()
-    with session_scope(settings) as session:
-        active = session.execute(
-            text(
-                "SELECT sc.id, sc.version, sc.params, sc.t_auto_accept, sc.t_auto_reject, "
-                "sc.calibrator, sc.fitted_from FROM scoring_configs sc "
-                "JOIN config_activations ca ON ca.scoring_config_id = sc.id "
-                "ORDER BY ca.activated_at DESC LIMIT 1"
-            )
-        ).mappings().first()
+    with session_scope(get_settings()) as session:
+        active = ConfigRepository(session).active()
         if active is None:
-            raise SystemExit("no active scoring config - the fit step must run first")
+            raise SystemExit("no active scoring config - the first run activates one")
 
-        version = f"{active['version']}-demo-looser"
-        existing = session.execute(
-            text("SELECT id FROM scoring_configs WHERE version = :v"), {"v": version}
-        ).scalar()
-        if existing:
-            return {"id": str(existing), "version": version, "created": False}
+        payload = json.loads(json.dumps(active.params))
+        version = f"{active.version}-demo-looser"
+        payload["config_id"] = version
+        moved: dict[str, tuple[float, float]] = {}
+        for kind, thresholds in payload["thresholds"].items():
+            before = float(thresholds["t_auto_accept"])
+            # Never at or below the reject threshold: that would empty the grey
+            # band and turn a threshold move into a different policy.
+            after = round(max(float(thresholds["t_auto_reject"]) + 0.01, before - delta), 6)
+            thresholds["t_auto_accept"] = after
+            moved[kind] = (before, after)
 
-        params = dict(active["params"])
-        accept = max(0.5, float(active["t_auto_accept"]) - delta)
-        for bundle in params.get("bundles", {}).values():
-            if "thresholds" in bundle:
-                bundle["thresholds"]["t_auto_accept"] = accept
-
-        new_id = uuid.uuid4()
-        session.execute(
-            text(
-                "INSERT INTO scoring_configs "
-                "(id, version, params, t_auto_accept, t_auto_reject, calibrator, "
-                " fitted_from, parent_id, notes, created_at) "
-                "VALUES (:id, :v, CAST(:p AS jsonb), :acc, :rej, CAST(:cal AS jsonb), "
-                " :ff, :parent, :notes, now())"
+        row = import_scoring_config(
+            session,
+            ScoringConfig.from_dict(payload),
+            notes=(
+                "Demo scenario 5. The active config with each accept threshold lowered by up "
+                f"to {delta}, so a second run of the same records decides some of them "
+                "differently and the diff has something real to show."
             ),
-            {
-                "id": new_id,
-                "v": version,
-                "p": json.dumps(params),
-                "acc": accept,
-                "rej": float(active["t_auto_reject"]),
-                "cal": json.dumps(active["calibrator"]),
-                "ff": active["fitted_from"],
-                "parent": active["id"],
-                "notes": (
-                    "Demo scenario 5. The active config with its accept threshold lowered "
-                    f"by {delta}, so a second run of the same records decides some of them "
-                    "differently and the diff has something real to show."
-                ),
-            },
         )
-    return {"id": str(new_id), "version": version, "created": True, "t_auto_accept": accept}
+        row.parent_id = active.id
+        return {"id": str(row.id), "version": version, "moved": moved}
 
 
 def newest_runs(limit: int = 2) -> list[dict[str, str]]:
@@ -218,32 +199,38 @@ def sample_records() -> dict[str, Any]:
 
     queries = {
         "exact_npi": """
-            SELECT mr.id AS match_id, sr.record_key, sr.last_name, sr.npi
+            SELECT mr.id AS match_id, sr.record_id, sr.last_name, sr.npi
             FROM match_results mr JOIN sanction_records sr ON sr.id = mr.sanction_record_id
             JOIN ground_truth g ON g.sanction_record_id = sr.id
             WHERE mr.superseded_by IS NULL AND mr.decision = 'MATCH'
-              AND g.scenario_tag = 'exact' AND sr.npi IS NOT NULL
-            ORDER BY mr.score DESC LIMIT 1
+              AND mr.route = 'deterministic'
+              AND g.scenario_tag = 'exact_npi' AND sr.npi IS NOT NULL
+            ORDER BY sr.ordinal LIMIT 1
         """,
         "missing_npi": """
-            SELECT mr.id AS match_id, sr.record_key, sr.last_name, mr.score
+            SELECT mr.id AS match_id, sr.record_id, sr.last_name, mr.calibrated_confidence
             FROM match_results mr JOIN sanction_records sr ON sr.id = mr.sanction_record_id
             JOIN ground_truth g ON g.sanction_record_id = sr.id
             WHERE mr.superseded_by IS NULL AND mr.decision = 'MATCH'
+              AND mr.route = 'probabilistic'
               AND g.scenario_tag = 'missing_npi'
-            ORDER BY mr.score DESC LIMIT 1
+            ORDER BY mr.raw_match_weight DESC LIMIT 1
         """,
         "ambiguous": """
-            SELECT mr.id AS match_id, sr.record_key, sr.last_name, mr.score
+            SELECT mr.id AS match_id, sr.record_id, sr.last_name, mr.calibrated_confidence
             FROM match_results mr JOIN sanction_records sr ON sr.id = mr.sanction_record_id
+            JOIN ground_truth g ON g.sanction_record_id = sr.id
             WHERE mr.superseded_by IS NULL AND mr.decision = 'AMBIGUOUS'
-            ORDER BY mr.score DESC LIMIT 1
+              AND g.scenario_tag = 'ambiguous'
+            ORDER BY sr.ordinal LIMIT 1
         """,
         "organization": """
-            SELECT mr.id AS match_id, sr.record_key, sr.organization_name, mr.decision
+            SELECT mr.id AS match_id, sr.record_id, sr.organization_name, mr.decision
             FROM match_results mr JOIN sanction_records sr ON sr.id = mr.sanction_record_id
-            WHERE mr.superseded_by IS NULL AND sr.organization_name IS NOT NULL
-            ORDER BY mr.score DESC LIMIT 1
+            JOIN ground_truth g ON g.sanction_record_id = sr.id
+            WHERE mr.superseded_by IS NULL AND mr.decision = 'MATCH'
+              AND g.scenario_tag = 'org_acronym'
+            ORDER BY sr.ordinal LIMIT 1
         """,
     }
     out: dict[str, Any] = {}
@@ -283,7 +270,7 @@ def main(argv: list[str]) -> int:
     keep = "KEEP=1" in argv or "--keep" in argv
     yes = "YES=1" in argv or "--yes" in argv
     started = time.perf_counter()
-    total = 8
+    total = 9
 
     if not keep:
         _step(1, total, "empty the database")
@@ -314,11 +301,18 @@ def main(argv: list[str]) -> int:
 
     _step(7, total, "a second config, and a second run to diff against the first")
     config = second_config()
-    print(f"    {config['version']}  accept threshold {config.get('t_auto_accept', 'unchanged')}")
+    for kind, (before, after) in config["moved"].items():
+        print(f"    {config['version']}  {kind} accept {before} -> {after}")
     _cli("configs", "activate", config["version"])
     _cli("run", "reconcile", "--strategy", "probabilistic", "--seed", str(SEED))
 
-    _step(8, total, "the upload workbook for the column-mapping screen")
+    _step(8, total, "a corruption sweep, so the Lab page has a curve to show")
+    # Every strategy at every level, in process. The Lab page draws the
+    # robustness curve from it and the corruption dial reads it; without one
+    # scenario 6 is an empty page and a button that takes minutes.
+    _cli("lab", "sweep", "--seed", str(SEED))
+
+    _step(9, total, "the upload workbook for the column-mapping screen")
     workbook = build_workbook()
 
     runs = newest_runs(2)

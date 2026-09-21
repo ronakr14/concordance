@@ -280,17 +280,21 @@ With a calibrated probability the thresholds become a business choice.
   negatives all land on one score, that is every negative it had. This was a
   real bug; `test_reject_threshold_discards_the_group_it_names` covers it.
 
-At corruption 0.5 the individual model lands on accept ≥ 0.486, reject < 0.192,
-with **15.7% of volume** in the grey band; the organization model on accept
-≥ 0.807, reject < 0.653, with **2.0%**. Over the whole evaluated file the grey
-band is 19.5% of volume. That percentage is the LLM cost driver at Stage 4, and
-shrinking it as the model improves is a visible win.
+At corruption 0.5 (config `config_c0.50_s20260914`) the individual model lands on
+accept ≥ 0.451, reject < 0.368, with **15.5% of its holdout** in the grey band; the
+organization model on accept ≥ 0.193, reject < 0.156, with **2.0%**. Over the whole
+evaluated file the grey band is 19.3% of volume. That percentage is the LLM cost
+driver at Stage 4, and shrinking it as the model improves is a visible win.
 
-The individual reject threshold is the low one, and it is low for a reason worth
-stating: `false_positive_bait` records share a name, city and state with a real
-provider and differ only in date of birth, so holdout recall will not support
-rejecting them outright. They land in the grey band instead. Section 9 has the
-volume.
+The thresholds are close together in confidence and still hold a sixth of the
+individual volume between them, and the reason is worth stating:
+`false_positive_bait` records share a name, city and state with a real provider
+and differ only in date of birth, so they score in the same narrow band as true
+matches with a corrupted field. On the whole file, 568 individual records score
+between 0.4 and 0.5 and 40% of them are true matches — which is what a calibrated
+0.44 should look like, and is exactly the population a threshold cannot separate.
+Holdout recall will not support rejecting them outright, so they land in the grey
+band. Section 9 has the volume.
 
 When the holdout has fewer than twenty negatives the accept threshold is not
 identifiable — every threshold has perfect precision when there is nothing to
@@ -480,11 +484,11 @@ cut was not identifiable from the data at all. Two organization negatives now
 exist: `org_unmatched` (a plausible organization that is simply absent) and
 `org_false_positive_bait` (same legal name, DBA and state as a real
 organization, different EIN and type-2 NPI). The organization accept threshold
-is now a real cut at **0.807** with a 2.0% grey band, where before it was an
-artefact. The config still emits a warning when a holdout has fewer than twenty
+is now a real cut (**0.193** on this fit, with a 2.0% grey band), where before it
+was an artefact. The config still emits a warning when a holdout has fewer than twenty
 negatives, because on a small slice the condition can recur.
 
-**`address_variation` is the weakest scenario at 0.656 recall — open, and
+**`address_variation` is the weakest scenario at 0.664 recall — open, and
 deliberately so.** Those records have no NPI *and* a corrupted address, and the
 address fields carry the two heaviest non-identifier weights in the model, so
 losing them drops the record into the grey band. Precision on the scenario is
@@ -507,19 +511,66 @@ measurement is a paid-tier or overnight job, and the number above should be
 re-measured there before it is quoted as the scenario's recall.
 
 **Negatives mostly land in the grey band rather than in `NO_MATCH`.** Of 900
-records whose true answer is `NO_MATCH`, 558 are rejected outright, 311 are
-routed to review and 31 are wrongly matched. `false_positive_bait` is the
-extreme case at 31/300 outright-correct: a record sharing a name, city and state
-with a real provider and differing only in date of birth is genuinely near the
-line, and the reject threshold sits low (0.192 for individuals) because holdout
-recall will not support a higher one. This is a property of the threshold
+records whose true answer is `NO_MATCH`, 561 are rejected outright, 322 are
+routed to review and 17 are wrongly matched. `false_positive_bait` is the
+extreme case at 32/300 outright-correct and 6 wrongly matched: a record sharing
+a name, city and state with a real provider and differing only in date of
+birth is genuinely near the line, and holdout recall will not support a reject
+threshold high enough to clear it. This is a property of the threshold
 policy, not a defect — the cost of review is lower than the cost of a wrongly
 cleared exclusion — but it is the single largest consumer of the grey band and
 therefore the clearest thing for Stage 4 to be measured against.
 
 ---
 
-## 10. Files
+## 10. After the first fit
+
+Everything above describes one fit on one synthetic file. Two things happen to a
+model after that, and both live in `matching/` because neither may know where its
+data came from.
+
+### Runs: the same engine, five thousand records at a time
+
+`engine.py` wraps a strategy for a whole run. It adds three properties a single
+`decide()` call does not need: a record that fails is recorded with its error and
+the run carries on; counts and timings accumulate as the run goes, so a run that
+dies half way still reports what it did; and every run records `ENGINE_VERSION`
+beside the scoring config id, the prompt version and the two snapshot hashes. Those
+five name everything that decided a number, which is what lets
+`concordance run replay` reproduce a historical run exactly and say which of the
+five changed when it does not. The engine imports nothing from `db/`:
+`jobs/reconcile.py` feeds it from Postgres, the evaluation harness from Parquet.
+
+### Retunes: learning from reviewers
+
+The first fit is unsupervised: EM has no labels, only the shape of the candidate
+pairs. Once reviewers start approving and rejecting, their verdicts are labels,
+and a retune (`learning/retune.py`, told in full in `docs/feedback_loop.md`) uses
+them in three places:
+
+- **Semi-supervised EM.** `ClampedPatterns` carries the labelled comparison
+  vectors, and `fit_em(..., clamped=...)` holds those pairs at their verdicts while
+  EM estimates the class of every other pair in the run. A thousand labels
+  collapse to a few hundred distinct (vector, verdict) pairs, so this costs
+  nothing.
+- **Recalibration on labels,** with `denoise` available for a known reviewer error
+  rate ε: an observed label y becomes (y − ε) / (1 − 2ε), which has the true label
+  as its expectation. The feedback-loop document measures what that does and does
+  not fix.
+- **Thresholds from the population, not the labels.** `expected_thresholds` cuts
+  on every record a run scored. If confidences are calibrated, the precision of
+  accepting everything above *t* is the mean confidence above *t*, so the 99%
+  targets can be met on thousands of records instead of on a holdout of a few
+  hundred labels, where one negative more or less moves the answer. The labels
+  decide the calibration; the population decides where to cut it.
+
+A retune never edits the config it started from and never activates the new one.
+Activation is a separate, audited step, and the Models page shows parent and child
+judged on the same holdout labels.
+
+---
+
+## 11. Files
 
 | file | what it holds |
 |---|---|
@@ -529,9 +580,12 @@ therefore the clearest thing for Stage 4 to be measured against.
 | `matching/scorer.py` | the two paths, routing, the margin check |
 | `matching/strategies.py` | the four strategies the sweep compares |
 | `matching/adjudication.py` | the grey-band seam and `NullAdjudicator` |
+| `matching/engine.py` | a whole run: per-record errors, counters, `ENGINE_VERSION` |
 | `matching/scoring_config.py` | the `scoring_configs` row, as JSON |
 | `eval/pairs.py` | normalize and block a dataset once, reuse everywhere |
 | `eval/fitting.py` | the four-step fit |
 | `eval/harness.py` | metrics, per scenario and per model |
 | `eval/sweep.py` | ten levels by four strategies, in parallel |
 | `eval/report_html.py` | the standalone report |
+| `learning/retune.py` | split labels, semi-supervised EM, recalibrate, place thresholds |
+| `learning/simulate.py` | the review-rounds simulation behind the feedback-loop numbers |

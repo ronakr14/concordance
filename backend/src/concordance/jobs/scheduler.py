@@ -1,13 +1,13 @@
 """The interval scheduler, which is twenty lines and lives inside the worker.
 
-There is no cron container and no APScheduler. A scheduled job here is a kind, an
+There is no cron job and no APScheduler. A scheduled job here is a kind, an
 interval, and the last time it was enqueued; the worker asks what is due on
 every pass of its loop and enqueues it. That is the whole mechanism, and it buys
-three things a cron container does not:
+three things an external scheduler does not:
 
-- **It is one deployment.** `docker compose up` brings up a worker, and the
-  schedule comes with it. Nothing has to be installed into an image, and no
-  second process can drift out of sync with the code it triggers.
+- **It is one deployment.** `make up` brings up a worker, and the schedule comes
+  with it. Nothing has to be registered with the operating system, and no second
+  process can drift out of sync with the code it triggers.
 - **Catch-up is explicit.** A worker that was down over the weekend enqueues the
   missed run when it starts, because the scheduler asks "has this ever run, and
   how long ago" rather than "did the clock strike while I was watching". Cases

@@ -587,6 +587,7 @@ defined once in `db/enums.py` and the constraint is generated from them.
 | `sanction_files.status` | `INSPECTED`, `COMMITTED`, `REJECTED` |
 | `providers.status` | `ACTIVE`, `INACTIVE`, `RETIRED` |
 | `reconciliation_runs.status` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
+| `reconciliation_runs.strategy` | `deterministic`, `fuzzy`, `probabilistic`, `probabilistic_llm` |
 | `scoring_configs.fitted_from` | `em`, `supervised`, `semi_supervised`, `manual` |
 | `match_results.decision` | `MATCH`, `AMBIGUOUS`, `NO_MATCH` |
 | `match_results.route` | `deterministic`, `probabilistic`, `llm` |

@@ -137,3 +137,16 @@ def test_the_runtime_engine_connects_as_the_app_role_not_the_owner() -> None:
     # No quiet fallback to the owner when the app role is not configured.
     with pytest.raises(RuntimeError, match="APP_DATABASE_URL"):
         database_url(Settings(_env_file=None, DATABASE_URL="postgresql+psycopg://owner:p@h/db"))
+
+
+@pytest.mark.unit
+def test_a_blank_optional_path_means_unset_as_the_example_file_says(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("LLM_CACHE_DIR", "LLM_PRICE_TABLE", "LLM_CA_BUNDLE"):
+        monkeypatch.setenv(name, "")
+    s = Settings(_env_file=None)
+    assert s.LLM_CACHE_DIR is None
+    assert s.LLM_PRICE_TABLE is None
+    assert s.LLM_CA_BUNDLE is None
+    assert s.llm_cache_dir.parts[-2:] == (".cache", "llm")

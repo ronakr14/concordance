@@ -206,6 +206,41 @@ stays flat at 0.906.
       └───────────────┘
 ```
 
+At runtime:
+
+```mermaid
+flowchart LR
+    browser([Browser]) -->|HTTP| web["web<br/>React + Vite"]
+    web -->|/api proxy| api["api<br/>FastAPI"]
+    api -->|enqueue| jobs[(jobs table)]
+    worker["worker<br/>same entrypoint"] -->|claim, SKIP LOCKED| jobs
+
+    subgraph pg [Postgres 17 - hosted Neon]
+        jobs
+        data[(providers, sanctions,<br/>results, cases)]
+        audit[(audit_logs<br/>append-only)]
+        views[(assistant_* views)]
+    end
+
+    api -- "concordance_app" --> data
+    worker -- "concordance_app" --> data
+    api -- "INSERT only" --> audit
+    worker -- "INSERT only" --> audit
+    api -- "SET LOCAL ROLE<br/>concordance_assistant,<br/>READ ONLY" --> views
+
+    worker -->|grey band only| llm{{LLM router}}
+    api -->|assistant SQL| llm
+    llm --> groq[Groq]
+    llm --> openrouter[OpenRouter]
+
+    migrate["alembic, db load, db reset"] -- "owner role" --> pg
+```
+
+The owner role runs migrations and the two commands that truncate, and nothing
+else. The app role cannot update or delete an audit row, and the assistant's
+role can read five views and nothing else. The only outbound network calls are
+to the two LLM providers, and a run with `LLM_ENABLED=false` makes none.
+
 Three processes, started together by `make up`:
 
 - **api** — FastAPI, JWT access + refresh, argon2 password hashing, role-based access.

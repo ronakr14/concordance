@@ -84,9 +84,8 @@ class Settings(BaseSettings):
     #: a logged-in user's token.
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     #: Path the refresh cookie is scoped to, as the *browser* sees it. The web
-    #: app reaches the API through an `/api` prefix (Vite's proxy in
-    #: development, nginx in the container), so the cookie is sent to the auth
-    #: routes behind it and to nothing else.
+    #: app reaches the API through an `/api` prefix (Vite's proxy), so the
+    #: cookie is sent to the auth routes behind it and to nothing else.
     REFRESH_COOKIE_PATH: str = "/api/auth"  # Stage 8
     #: Largest sanction workbook accepted, in bytes. The monthly LEIE file is
     #: about 12 MB as xlsx; the ceiling leaves room for it and refuses the rest
@@ -157,6 +156,15 @@ class Settings(BaseSettings):
     @classmethod
     def _absolute(cls, v: Path) -> Path:
         return v if v.is_absolute() else (_REPO_ROOT / v).resolve()
+
+    @field_validator("LLM_CACHE_DIR", "LLM_PRICE_TABLE", "LLM_CA_BUNDLE", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        """`LLM_CACHE_DIR=` in `.env` means "use the default", as `.env.example`
+        says. Left to pydantic, the empty string becomes `Path("")` - the current
+        directory - which then resolves to the repository root: a cache written
+        into the checkout and a price table read from a directory."""
+        return None if isinstance(v, str) and not v.strip() else v
 
     @field_validator("LLM_CACHE_DIR", "LLM_PRICE_TABLE", "LLM_CA_BUNDLE")
     @classmethod
