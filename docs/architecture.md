@@ -56,7 +56,7 @@ sanction record
    ├─▶ blocking             candidate generation, recall 0.996 at ~43 candidates
    ├─▶ comparison vectors   per-field agreement levels, not similarity scores
    ├─▶ Fellegi–Sunter       weights learned by EM on unlabelled data
-   ├─▶ isotonic calibration a score becomes a probability, ECE 0.087 → 0.037
+   ├─▶ isotonic calibration a score becomes a probability, ECE 0.087 → 0.026
    └─▶ thresholds           accept · grey band · reject
                                    │
                                    └─▶ LLM adjudication, grey band only

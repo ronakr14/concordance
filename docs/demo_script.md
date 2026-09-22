@@ -15,7 +15,7 @@ decision can be explained, reproduced, and changed on purpose.
 ## Before the audience arrives
 
 ```
-make demo YES=1      # empties the database, then builds the demo state; allow an hour
+make demo YES=1      # empties the database, then builds the demo state: ~85 min over Neon
 make up              # api, worker, web
 ```
 

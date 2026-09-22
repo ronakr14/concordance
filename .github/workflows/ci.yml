@@ -117,6 +117,16 @@ jobs:
         # failure in the code rather than in the environment around it.
         run: python -m pytest tests/unit -q
 
+      - name: Seed, load and fit the dataset the integration tests read
+        # The integration tests reconcile real records and review real
+        # decisions, so they need the provider master, the sanction file, its
+        # ground truth and a fitted config - the same seed a developer's
+        # database was built from, so CI tests what passes locally.
+        run: |
+          python -m concordance.cli data seed --seed 20260914 --corruption 0.5
+          python -m concordance.cli db load
+          python -m concordance.cli match fit --seed 20260914
+
       - name: Full suite, with the coverage gates
         # One run rather than two. The integration tests and the coverage
         # measurement want the same suite, and running it twice against the

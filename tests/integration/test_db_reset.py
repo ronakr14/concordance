@@ -57,7 +57,7 @@ def test_reset_empties_the_tables_and_keeps_the_schema(owner_session: Any, owner
     owner_session.execute(
         text(
             "INSERT INTO users (id, email, password_hash, role, is_active) "
-            "VALUES (gen_random_uuid(), 'reset-test@example.invalid', 'x', 'reviewer', true)"
+            "VALUES (gen_random_uuid(), 'reset-test@example.invalid', 'x', 'analyst', true)"
         )
     )
     owner_session.commit()
@@ -81,7 +81,7 @@ def test_reset_refuses_without_the_confirmation_word(owner_session: Any, owner_u
     owner_session.execute(
         text(
             "INSERT INTO users (id, email, password_hash, role, is_active) "
-            "VALUES (gen_random_uuid(), 'reset-guard@example.invalid', 'x', 'reviewer', true)"
+            "VALUES (gen_random_uuid(), 'reset-guard@example.invalid', 'x', 'analyst', true)"
         )
     )
     owner_session.commit()

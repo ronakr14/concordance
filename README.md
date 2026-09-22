@@ -11,9 +11,9 @@ rather than hand-tuned, whose output is a calibrated posterior probability rathe
 a score, and which sends only the genuinely uncertain cases to a language model — then
 proves each of those claims with a measurement you can reproduce.
 
-At 50% corruption it holds an F1 of **0.945** where hand-tuned fuzzy matching manages
+At 50% corruption it holds an F1 of **0.949** where hand-tuned fuzzy matching manages
 **0.305**. When it says 0.90, it means it: holdout Expected Calibration Error is
-**0.037** after isotonic calibration. Every decision it has ever made can be replayed
+**0.026** after isotonic calibration. Every decision it has ever made can be replayed
 bit-for-bit, and any two runs can be diffed to show exactly which decisions a config
 change moved.
 
@@ -120,8 +120,8 @@ exactly the direction that matters.
 
 **The confidence is calibrated, and the calibration is measured.** The posterior goes
 through isotonic regression fitted on a holdout, and the reliability diagram is
-published rather than asserted. Expected Calibration Error falls from 0.087 to 0.037
-for the individual model and from 0.032 to 0.020 for the organization model.
+published rather than asserted. Expected Calibration Error falls from 0.087 to 0.026
+for the individual model and from 0.032 to 0.006 for the organization model.
 
 **The LLM is routed by cost, not by vibes.** Because confidence is calibrated, the grey
 band between the auto-accept and auto-reject thresholds is a defensible boundary rather
@@ -150,8 +150,8 @@ honest result, and the reason the gate exists.
 | corruption | deterministic | fuzzy (hand-tuned) | probabilistic (EM) |
 |---:|---:|---:|---:|
 | 0.0 | 0.549 | 0.503 | **0.999** |
-| 0.5 | 0.402 | 0.305 | **0.945** |
-| 0.9 | 0.303 | 0.185 | **0.886** |
+| 0.5 | 0.402 | 0.305 | **0.949** |
+| 0.9 | 0.303 | 0.185 | **0.887** |
 
 The naive strategies do not degrade gracefully; they collapse. Thirty cells in 221 s.
 
@@ -159,8 +159,8 @@ The naive strategies do not degrade gracefully; they collapse. Thirty cells in 2
 
 | model | before isotonic | after |
 |---|---:|---:|
-| individual | 0.087 | **0.037** |
-| organization | 0.032 | **0.020** |
+| individual | 0.087 | **0.026** |
+| organization | 0.032 | **0.006** |
 
 Measured on the best candidate per record, which is the quantity thresholds are
 actually applied to. Calibrating over every candidate pair would give a far
