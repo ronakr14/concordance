@@ -1572,6 +1572,40 @@ def configs_list() -> None:
         )
 
 
+@configs_app.command("import")
+def configs_import(
+    path: Annotated[
+        Path | None, typer.Argument(help="Fitted config JSON; default is the newest in DATA_DIR/configs.")
+    ] = None,
+    activate: Annotated[
+        bool, typer.Option("--activate/--no-activate", help="Also make it the active config.")
+    ] = True,
+) -> None:
+    """Register a fitted config file in the database, and by default activate it.
+
+    A run imports the newest file on first use anyway; this is for when
+    something must exist before any run does - an API-queued run records its
+    config when it is queued, so a fresh database needs one active first.
+    """
+    from concordance.db.repositories.configs import ConfigRepository
+    from concordance.db.session import session_scope
+    from concordance.jobs.reconcile import _latest_config_file, import_scoring_config
+    from concordance.matching.scoring_config import ScoringConfig
+
+    settings, _ = start(None, echo_config=False)
+    source = path or _latest_config_file(settings)
+    if source is None:
+        typer.secho("no config file to import - run `concordance match fit` first", fg="red")
+        raise typer.Exit(code=1)
+    with session_scope(settings) as session:
+        row = import_scoring_config(
+            session, ScoringConfig.read(source), notes=f"imported from {source.name}"
+        )
+        if activate:
+            ConfigRepository(session).activate(row, actor_id=None, reason="imported")
+        typer.echo(f"{row.version}{' (active)' if activate else ''}")
+
+
 @configs_app.command("activate")
 def configs_activate(
     version: Annotated[str, typer.Argument(help="The version to make active.")],

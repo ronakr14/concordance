@@ -63,6 +63,9 @@ def test_reset_empties_the_tables_and_keeps_the_schema(owner_session: Any, owner
     owner_session.commit()
     assert _count(owner_session, "users") > 0
     before = _tables(owner_session)
+    # End this session's transaction first: the count above holds a lock on
+    # `users`, and TRUNCATE would wait on it until the statement timeout.
+    owner_session.commit()
 
     result = _run(owner_url, "--yes")
     assert result.exit_code == 0, result.output

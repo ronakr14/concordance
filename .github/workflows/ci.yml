@@ -126,6 +126,7 @@ jobs:
           python -m concordance.cli data seed --seed 20260914 --corruption 0.5
           python -m concordance.cli db load
           python -m concordance.cli match fit --seed 20260914
+          python -m concordance.cli configs import
 
       - name: Full suite, with the coverage gates
         # One run rather than two. The integration tests and the coverage
