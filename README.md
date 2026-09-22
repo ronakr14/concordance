@@ -298,6 +298,8 @@ Three processes, started together by `make up`:
 
 | Document | What it covers |
 |---|---|
+| [`docs/usage.md`](docs/usage.md) | Running it day to day: start and stop, the main and demo databases, logins, everyday commands |
+| [`docs/demo_script.md`](docs/demo_script.md) | The ten-minute demo, scenario by scenario |
 | [`docs/matching_engine.md`](docs/matching_engine.md) | The engine, written for someone who has never seen Fellegi–Sunter: level tables, the EM derivation, the guard rails, and why learned weights beat tuned ones |
 | [`docs/orchestration.md`](docs/orchestration.md) | Runs, the Postgres job queue, replay and diff |
 | [`docs/lab.md`](docs/lab.md) | The two experiments, the cost estimator, and what it refuses to estimate |
