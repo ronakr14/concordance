@@ -16,7 +16,7 @@ Derived from `docs/PLAN.md`. Nothing in the plan is omitted here.
 - Items tagged `(Q1)`…`(Q6)` trace back to a resolved PLAN §11 decision — read that
   section before implementing one, the reasoning matters more than the item.
 
-Progress: `9 / 11 stages complete` (GATE 9's LLM cost panel waits on a free-tier rerun) · a portfolio artifact exists from the end of Stage 3.
+Progress: `10 / 11 stages complete` (Stage 10 closed except the items marked deferred) · a portfolio artifact exists from the end of Stage 3.
 
 ---
 
@@ -1253,8 +1253,8 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 - [x] **Reliability diagram**, before and after calibration, with the perfect-calibration reference line ⭐ — on the fit's holdout, bins as points sized by count; the sweep now records the fit's before/after per level and model
 - [x] ECE and Brier displayed alongside the diagram
 - [x] Grey-band width indicator — the confidence scale with both thresholds on it, plus the share of records that land in the band
-- [ ] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐ — built and tested (`eval/llm_experiment.py`: sample stratified by stratum x true-match cell, exact cell sizes, stratified bootstrap; `docs/lab.md`). The first real run (2026-09-19) was invalidated: called in file order and cut short by both free-tier daily quotas, it kept the match-heavy head of the file and reported F1 1.05. Fixed (random interleaved call order, truth-stratified cells, under-answered levels withheld); open until a rerun completes after the quota resets
-- [ ] F1 comparison against that baseline, proving routing costs little accuracy ⭐
+- [x] **LLM cost panel**: calls, tokens, dollars — versus an LLM-on-everything baseline ⭐ — built and tested (`eval/llm_experiment.py`: sample stratified by stratum x true-match cell, exact cell sizes, stratified bootstrap; `docs/lab.md`). The first real run (2026-09-19) was invalidated: called in file order and cut short by both free-tier daily quotas, it kept the match-heavy head of the file and reported F1 1.05. Fixed (random interleaved call order, truth-stratified cells, under-answered levels withheld); open until a rerun completes after the quota resets. **Rerun 2026-09-22** at corruption 0.5 only, against `concordance_demo`: 124 live answers of 200 sampled (76 lost to Groq's 8,000 tokens-per-minute limit and OpenRouter 429s; no level withheld). Routed: 965 calls, 3.2 M tokens, $0.44 at the placeholder price; LLM-on-everything: 5,000 calls, 15.8 M tokens, $2.02 — 81% fewer calls, 78% less spend
+- [x] F1 comparison against that baseline, proving routing costs little accuracy ⭐ — routed F1 0.957 [0.943, 0.970] against 0.952 [0.914, 0.979]; intervals overlap, so no measurable accuracy cost
 - [x] Blocking recall displayed
 - [x] Per-scenario accuracy breakdown
 - [x] `POST /lab/sweep` endpoint enqueueing a sweep job — admin only, 202 with a `lab_sweeps` row in `QUEUED`; one live experiment at a time (409). `POST /lab/llm` queues the LLM sample the same way
@@ -1312,7 +1312,7 @@ Order of sacrifice within Stage 9: assistant → feedback loop → run-compariso
 
 ### GATE 9
 - [x] Lab page renders the robustness curve and reliability diagram from real sweep data ⭐ — 50,000 × 5,000, ten levels, 30 cells in 221 s. At 50% corruption probabilistic F1 0.949 against fuzzy 0.305; at 90%, 0.887 against 0.185. Individual-model ECE at 50% goes from 0.087 to 0.026. Driven in Chrome by `lab.spec.ts`, 2/2
-- [ ] LLM cost-versus-baseline panel shows a real saving ⭐
+- [x] LLM cost-versus-baseline panel shows a real saving ⭐ — 78% of spend, see above
 - [x] `concordance retune` produces a new config version with improved holdout precision ⭐ — on clean labels, holdout recall 0.882 → 0.922 and review load 14.0% → 10.5% at 200 labels, precision held; the new version is written inactive with both configs' numbers on it
 - [x] Precision-per-round chart shows movement across at least three simulated review rounds — five rounds, F1 0.906 → 0.931 → 0.945 → 0.947 with the grey band 20.9% → 14.0%, then the gate stops it changing. With 3% reviewer error the gate refuses every round and the curve stays flat at 0.906 — the honest result, and the reason the gate exists
 - [x] Run comparison shows a real diff between two configs — proved end to end by `frontend/e2e/compare.spec.ts` and `tests/integration/test_reconciliation_runs.py`, on two runs of the same records under configs whose accept thresholds differ
@@ -1388,7 +1388,7 @@ failure rather than an application one — which is still exactly why this stage
 - [ ] README: Investigation page screenshot ⭐
 - [ ] README: quick start, verified by following it verbatim on a clean checkout ⭐ — written, not yet followed verbatim
 - [x] README: "why this is not just a fuzzy matcher" section ⭐ — five points, each one a consequence of taking calibration seriously rather than a feature
-- [x] README: measured results table — F1 against the corruption dial, ECE before and after isotonic, blocking recall against candidate cost, and F1 across review rounds ⭐. The LLM cost saving is the one number still missing, because its experiment is still running
+- [x] README: measured results table — F1 against the corruption dial, ECE before and after isotonic, blocking recall against candidate cost, and F1 across review rounds ⭐. The LLM cost saving was added 2026-09-22
 - [x] README: tech stack and the reasoning behind the non-obvious choices — in the README's architecture section, and at length in `docs/architecture.md` §9, which gives each choice the alternative it was made against
 - [x] `docs/architecture.md` complete — the three processes, the request path, the four protocol seams and their two implementations each, the three database roles and why the app role must not own its tables, the assistant's two defences, and what is deliberately absent
 - [x] `docs/data_dictionary.md` complete and current — diffed against the live schema: all 21 tables, every column and its nullability matched; the enumerations table was missing `reconciliation_runs.strategy`. `tests/integration/test_data_dictionary.py` now reads both and fails on any difference, so "current" stays true when a column is added
@@ -1410,7 +1410,7 @@ failure rather than an application one — which is still exactly why this stage
 - [ ] Demo scenario 7: upload a file with unfamiliar headers, map the columns live, ingest ⭐
 - [ ] Demo scenario 8: organization match — different field set, different model, same workflow ⭐
 - [ ] Demo timed end to end, under 10 minutes
-- [x] `make demo` resets and seeds the demo state in one command ⭐ — `scripts/demo.py`: empty, seed at a fixed seed, load, fit, two users, a run, a second config whose accept threshold is lower, a second run to diff it against, and the unfamiliar-header workbook for the column-mapping screen. Every id it produces is printed and written to `.run/demo.json`, so the walkthrough never has to hunt for a run id in the UI. `KEEP=1` reuses the loaded dataset. Written; not yet executed, because building it empties the database and the Lab's LLM experiment is still running against it
+- [x] `make demo` resets and seeds the demo state in one command ⭐ — `scripts/demo.py`: empty, seed at a fixed seed, load, fit, two users, a run, a second config whose accept threshold is lower, a second run to diff it against, and the unfamiliar-header workbook for the column-mapping screen. Every id it produces is printed and written to `.run/demo.json`, so the walkthrough never has to hunt for a run id in the UI. `KEEP=1` reuses the loaded dataset. Executed 2026-09-21 against `concordance_demo`, a separate database, so the working one was never emptied; ~85 min over Neon
 
 ### CI
 
@@ -1418,14 +1418,14 @@ failure rather than an application one — which is still exactly why this stage
 - [x] Integration tests against a `postgres:17` **service container** ⭐ — the one place containers remain, because GitHub's runners provide Docker and nothing is installed locally. `CREATE EXTENSION pg_trgm` runs in the CI database, and so does `CREATE ROLE concordance_app`: the migration's `GRANT` is guarded on that role existing, and proving `audit_logs` is append-only needs a role that does not own the table. CI then writes the `.env` the integration fixtures read, because the root conftest hides the environment from the suite on purpose
 - [x] Frontend build and `tsc --noEmit` in CI — `npm run typecheck` then `npm run build`, on Node 22
 - [x] CI is the proof that the install instructions work ⭐ — it starts from a clean checkout and a bare Python, so a missing dependency or an undeclared step fails the build. Writing it exposed the first such gap: the README said `pip install -e backend[dev]`, which installs the test tools and none of the runtime extras, so a reader following it verbatim could run the engine's unit tests and never start the API. There is now a `backend[all]` extra, and that is what both CI and the README use
-- [ ] Status badge in the README
+- [x] Status badge in the README
 
 ### GATE 10 — ship
-- [ ] Clean-checkout cold start works from the README alone, with no container runtime present ⭐
-- [ ] `make demo` then the eight demo scenarios, run end to end without a hitch ⭐
+- [ ] Clean-checkout cold start works from the README alone, with no container runtime present ⭐ — **deferred by decision (2026-09-22).** CI is the partial proof: it installs from a clean checkout on a bare runner and migrates, preflights, seeds, loads and fits exactly as the README says. What it does not do is start the three processes
+- [ ] `make demo` then the eight demo scenarios, run end to end without a hitch ⭐ — **half done.** `make demo` has run end to end against `concordance_demo` (every id in `.run/demo.json`); the scenarios themselves were not walked through or timed, by decision (2026-09-22)
 - [ ] CI green on the default branch ⭐
-- [ ] README contains real measured numbers, not placeholders ⭐
-- [ ] Repository contains no secrets, in the working tree or in history ⭐
+- [x] README contains real measured numbers, not placeholders ⭐ — every table traced to its source on 2026-09-22; the headline F1 (0.945 → 0.949), the 90% F1 (0.886 → 0.887) and both post-calibration ECEs (0.037 → 0.026, 0.020 → 0.006) had drifted from their sources and were corrected. The LLM prices are labelled as placeholders, which is what they are
+- [x] Repository contains no secrets, in the working tree or in history ⭐ — `scripts/scan_credentials.py` over 860 historical blobs, run locally before the first push and on every CI run since
 
 ---
 
@@ -1438,7 +1438,7 @@ The things a reviewer will actually look at. Each must exist and be real.
 - [ ] Investigation screen showing per-field weight contributions and highlighted cited evidence ⭐
 - [ ] Replay demonstrating a bit-identical historical decision ⭐
 - [ ] Run diff explaining exactly what a config change moved ⭐
-- [ ] LLM cost saving versus the LLM-on-everything baseline ⭐
+- [x] LLM cost saving versus the LLM-on-everything baseline ⭐ — README, *LLM routing*
 - [ ] Precision improving across review rounds via the feedback loop ⭐
 - [ ] Assistant rejecting a hostile query, with the reason shown ⭐
 - [ ] `docs/matching_engine.md` readable by someone who has never seen Fellegi–Sunter ⭐

@@ -1,5 +1,7 @@
 # Concordance
 
+[![CI](https://github.com/ronakr14/concordance/actions/workflows/ci.yml/badge.svg)](https://github.com/ronakr14/concordance/actions/workflows/ci.yml)
+
 **Reconciling healthcare providers against sanction and exclusion lists, when up to
 90% of the data on both sides is wrong.**
 
@@ -175,6 +177,25 @@ that no decision is ever made about.
 | Mean candidates/record | 43.2 | 41.5 |
 | Index build, 50k providers | 8.17 s | 8.48 s |
 | Query, 5,000 records | 11.3 s | 11.0 s |
+
+### LLM routing — cost against an LLM-on-everything baseline
+
+Corruption 0.5, 5,000 records. Only the 965 grey-band records reach the model; the
+baseline sends all 5,000. F1 is estimated from a stratified sample of live model
+answers (124 answered, 76 lost to the free tier's rate limit), with a 95% bootstrap
+interval.
+
+| | routed (grey band only) | LLM on everything |
+|---|---:|---:|
+| model calls | 965 | 5,000 |
+| tokens | 3.2 M | 15.8 M |
+| cost at $0.10 / $0.32 per M | $0.44 | $2.02 |
+| F1 | **0.957** [0.943, 0.970] | 0.952 [0.914, 0.979] |
+
+**81% fewer calls and 78% less spend, at no loss of F1**: the intervals overlap, and
+routing's is the tighter of the two. The engine alone, with no model at all, scores
+0.949. The prices are a placeholder for a paid model (`llama-3.3-70b-instruct`), not a
+quote; the run itself used free models.
 
 ### Feedback loop — F1 across simulated review rounds
 

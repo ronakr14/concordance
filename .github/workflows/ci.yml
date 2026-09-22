@@ -129,21 +129,23 @@ jobs:
           python -m concordance.cli configs import
 
       - name: Full suite, with the coverage gates
-        # One run rather than two. The integration tests and the coverage
-        # measurement want the same suite, and running it twice against the
-        # same database means the destructive reset test runs twice for no
-        # extra information.
-        #
-        # CI is the only place that test may run at all: this database was
-        # built from nothing three steps ago, while a developer machine points
-        # at a shared hosted one holding a seeded 50,000-provider dataset.
-        env:
-          CONCORDANCE_DESTRUCTIVE_TESTS: "1"
+        # Everything but the reset test, which empties the database: collected
+        # in name order it would run before the feedback-loop and
+        # reconciliation suites and leave them nothing to reconcile.
         run: >-
           python -m pytest tests
+          --ignore=tests/integration/test_db_reset.py
           --cov=concordance.matching --cov=concordance.api
           --cov-report=term-missing --cov-fail-under=80
           -q
+
+      - name: The destructive reset test, last
+        # CI is the only place this test may run at all: this database was
+        # built from nothing a few steps ago, while a developer machine points
+        # at a shared hosted one holding a seeded 50,000-provider dataset.
+        env:
+          CONCORDANCE_DESTRUCTIVE_TESTS: "1"
+        run: python -m pytest tests/integration/test_db_reset.py -q
 
       - name: Coverage gate per package
         # The gate above is on the two packages combined, and matching/ is large
